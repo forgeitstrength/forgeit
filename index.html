@@ -241,6 +241,13 @@
   .dot.protein { background: var(--series-protein); }
   .dot.carbs { background: var(--series-carbs); }
   .dot.fat { background: var(--series-fat); }
+  .food-icon-btn {
+    width: 26px; height: 26px; border-radius: 50%; border: none; background: none;
+    color: var(--text-muted); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; flex-shrink: 0;
+  }
+  .food-icon-btn svg { width: 14px; height: 14px; }
+  .food-item-editing { padding: 10px 0; }
+  .food-edit-row { width: 100%; }
 
   /* plan tab */
   .plan-card {
@@ -342,9 +349,9 @@
   .tab-btn {
     flex: 1; background: none; border: none; display: flex; flex-direction: column;
     align-items: center; gap: 3px; padding: 6px 0; cursor: pointer; color: var(--text-muted);
-    font-family: inherit; font-size: 10.5px; font-weight: 650;
+    font-family: inherit; font-size: 9.5px; font-weight: 650; white-space: nowrap;
   }
-  .tab-btn svg { width: 21px; height: 21px; }
+  .tab-btn svg { width: 19px; height: 19px; }
   .tab-btn.active { color: var(--accent); }
 
   .toast {
@@ -423,8 +430,8 @@
 
 <div class="preview-banner" id="statusBanner" style="display:none;"></div>
 
-<!-- TODAY VIEW -->
-<div class="view active" id="view-today">
+<!-- WORKOUT VIEW -->
+<div class="view active" id="view-workout">
 
   <div class="hero-line" id="heroLine">Ready when you are</div>
   <div class="hero-sub" id="heroSub">Loading your program…</div>
@@ -454,8 +461,16 @@
 
     <div id="exerciseList"></div>
 
-    <button class="btn" id="finishBtn">Mark workout done</button>
+    <button class="btn" id="finishBtn">Save workout</button>
   </div>
+
+</div>
+
+<!-- NUTRITION VIEW -->
+<div class="view" id="view-nutrition">
+
+  <div class="hero-line">Fuel for the goal</div>
+  <div class="hero-sub">Log what you eat — the more you log, the better the suggestions get.</div>
 
   <div class="card">
     <div class="card-head">
@@ -586,9 +601,13 @@
 </main>
 
 <nav class="tabbar">
-  <button class="tab-btn active" data-tab="today">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 12l3 3 5-6"/></svg>
-    Today
+  <button class="tab-btn active" data-tab="workout">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5l11 11M4 8l4-4M20 16l-4 4M2.5 9.5l2-2M12.5 19.5l2-2M16 3l1.5 1.5-3 3L13 6M8 18l1.5 1.5-3 3L5 21"/></svg>
+    Workout
+  </button>
+  <button class="tab-btn" data-tab="nutrition">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 010 8h-1M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><path d="M6 1v3M10 1v3M14 1v3"/></svg>
+    Nutrition
   </button>
   <button class="tab-btn" data-tab="plan">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="3"/><path d="M3 9h18M8 3v3M16 3v3"/></svg>
@@ -825,8 +844,8 @@ function updateWorkoutBar() {
   document.getElementById("workoutPct").textContent = pct + "%";
   const badge = document.querySelector(".badge");
   const finishBtn = document.getElementById("finishBtn");
-  if (done === 0) { badge.textContent = "Not started"; badge.classList.remove("is-done"); finishBtn.textContent = "Mark workout done"; finishBtn.classList.remove("done-state"); }
-  else if (done < total) { badge.textContent = "In progress"; badge.classList.remove("is-done"); finishBtn.textContent = "Mark workout done"; finishBtn.classList.remove("done-state"); }
+  if (done === 0) { badge.textContent = "Not started"; badge.classList.remove("is-done"); finishBtn.textContent = "Save workout"; finishBtn.classList.remove("done-state"); }
+  else if (done < total) { badge.textContent = "In progress"; badge.classList.remove("is-done"); finishBtn.textContent = `Save workout (${done}/${total})`; finishBtn.classList.remove("done-state"); }
   else { badge.textContent = "Complete"; badge.classList.add("is-done"); finishBtn.textContent = "Workout logged ✓"; finishBtn.classList.add("done-state"); }
 
   const hero = document.getElementById("heroLine");
@@ -843,12 +862,10 @@ function updateWorkoutBar() {
 }
 
 document.getElementById("finishBtn").addEventListener("click", async () => {
-  if (doneSets() < totalSets()) {
-    WORKOUT.groups.forEach((g, gi) => g.sets.forEach((s, si) => checked[gi+"-"+si] = true));
-    renderWorkout();
-  }
-  updateWorkoutBar();
+  // save exactly what's checked — never force-complete sets the user didn't mark
   const total = totalSets(), done = doneSets();
+  const dateLabel = sessionDate === todayStr() ? "today" : sessionDate;
+  const msg = done === total ? `Workout logged for ${dateLabel}` : `Progress saved (${done}/${total}) for ${dateLabel}`;
   if (LIVE) {
     try {
       const { data: { user } } = await sb.auth.getUser();
@@ -865,11 +882,11 @@ document.getElementById("finishBtn").addEventListener("click", async () => {
         completed: g.sets.every((s, si) => checked[gi + "-" + si]),
       }));
       if (logs.length) await sb.from("session_exercise_logs").insert(logs);
-      showToast(sessionDate === todayStr() ? "Workout logged for today" : "Workout logged for " + sessionDate);
+      showToast(msg);
       loadSessionsHistory();
     } catch (e) { showToast("Couldn't save — check connection", true); }
   } else {
-    showToast("Workout logged (demo — not saved)");
+    showToast(msg + " (demo — not saved)");
   }
 });
 
@@ -950,16 +967,94 @@ function renderRings() {
 }
 
 // ---------- food log ----------
+let editingFoodId = null;
+const PENCIL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
+
 function renderFood() {
   const list = document.getElementById("foodList");
   list.innerHTML = "";
+  if (!food.length) { list.innerHTML = '<div class="note-card" style="padding:0;">Nothing logged yet.</div>'; return; }
   food.slice().reverse().forEach(f => {
     const div = document.createElement("div");
-    div.className = "food-item";
-    const dots = f.tags.map(t => `<div class="dot ${t}"></div>`).join("");
-    div.innerHTML = `<div class="food-name">${f.name}${f.shake ? " 🥤" : ""}</div><div class="food-tags">${dots}</div>`;
+    if (editingFoodId && f.id === editingFoodId) {
+      div.className = "food-item food-item-editing";
+      div.innerHTML = `
+        <div class="food-edit-row">
+          <input class="qa-input" style="margin-top:0;" data-edit="name" value="${escapeHtml(f.name)}">
+          <div class="field-row" style="margin-top:8px;">
+            <input class="qa-input" data-edit="protein" type="number" inputmode="decimal" placeholder="Protein g" value="${f.protein_g || ""}">
+            <input class="qa-input" data-edit="carbs" type="number" inputmode="decimal" placeholder="Carbs g" value="${f.carbs_g || ""}">
+            <input class="qa-input" data-edit="fat" type="number" inputmode="decimal" placeholder="Fat g" value="${f.fat_g || ""}">
+          </div>
+          <div style="display:flex;gap:8px;margin-top:10px;">
+            <button class="btn" style="margin-top:0;" data-action="save-food" data-id="${f.id}">Save</button>
+            <button class="btn ghost" style="margin-top:0;" data-action="cancel-food">Cancel</button>
+          </div>
+        </div>`;
+    } else {
+      div.className = "food-item";
+      const dots = f.tags.map(t => `<div class="dot ${t}"></div>`).join("");
+      div.innerHTML = `
+        <div class="food-name">${escapeHtml(f.name)}${f.shake ? " 🥤" : ""}</div>
+        <div class="food-tags">${dots}</div>
+        <button class="food-icon-btn" data-action="edit-food" data-id="${f.id}" title="Edit">${PENCIL_SVG}</button>
+        <button class="food-icon-btn" data-action="delete-food" data-id="${f.id}" title="Delete">${X_SVG}</button>`;
+    }
     list.appendChild(div);
   });
+
+  list.querySelectorAll('[data-action="edit-food"]').forEach(btn => btn.addEventListener("click", () => { editingFoodId = btn.dataset.id; renderFood(); }));
+  list.querySelectorAll('[data-action="cancel-food"]').forEach(btn => btn.addEventListener("click", () => { editingFoodId = null; renderFood(); }));
+  list.querySelectorAll('[data-action="delete-food"]').forEach(btn => btn.addEventListener("click", () => deleteFoodItem(btn.dataset.id)));
+  list.querySelectorAll('[data-action="save-food"]').forEach(btn => btn.addEventListener("click", () => saveFoodEdit(btn.dataset.id)));
+}
+
+async function deleteFoodItem(id) {
+  const item = food.find(f => f.id === id);
+  if (!item) return;
+  if (!LIVE) {
+    food = food.filter(f => f.id !== id);
+    renderFood();
+    showToast("Deleted (demo — not saved)");
+    return;
+  }
+  try {
+    await sb.from("nutrition_log").delete().eq("id", id);
+    MACROS.protein.current = Math.max(0, MACROS.protein.current - (item.protein_g || 0));
+    MACROS.carbs.current = Math.max(0, MACROS.carbs.current - (item.carbs_g || 0));
+    MACROS.fat.current = Math.max(0, MACROS.fat.current - (item.fat_g || 0));
+    food = food.filter(f => f.id !== id);
+    renderRings();
+    renderFood();
+    showToast("Deleted");
+  } catch (e) { showToast("Couldn't delete — check connection", true); }
+}
+
+async function saveFoodEdit(id) {
+  const row = document.querySelector(".food-item-editing");
+  if (!row) return;
+  const name = row.querySelector('[data-edit="name"]').value.trim();
+  const protein_g = Number(row.querySelector('[data-edit="protein"]').value) || 0;
+  const carbs_g = Number(row.querySelector('[data-edit="carbs"]').value) || 0;
+  const fat_g = Number(row.querySelector('[data-edit="fat"]').value) || 0;
+  const item = food.find(f => f.id === id);
+  if (!item || !name) return;
+  const oldP = item.protein_g || 0, oldC = item.carbs_g || 0, oldF = item.fat_g || 0;
+  item.name = name; item.protein_g = protein_g; item.carbs_g = carbs_g; item.fat_g = fat_g;
+  MACROS.protein.current = Math.max(0, MACROS.protein.current + (protein_g - oldP));
+  MACROS.carbs.current = Math.max(0, MACROS.carbs.current + (carbs_g - oldC));
+  MACROS.fat.current = Math.max(0, MACROS.fat.current + (fat_g - oldF));
+  editingFoodId = null;
+  renderRings();
+  renderFood();
+  if (LIVE) {
+    try {
+      await sb.from("nutrition_log").update({ name, protein_g, carbs_g, fat_g }).eq("id", id);
+      showToast("Updated");
+    } catch (e) { showToast("Couldn't save — check connection", true); }
+  } else {
+    showToast("Updated (demo — not saved)");
+  }
 }
 
 function setChips(tags, shake) {
@@ -1057,7 +1152,8 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
   const carbsAdd   = known ? Number(known.carbs_g) || 0   : (tags.includes("carbs") ? 20 : 0);
   const fatAdd     = known ? Number(known.fat_g) || 0     : (tags.includes("fat") ? 6 : 0);
 
-  food.push({ name, tags, shake });
+  const newItem = { id: null, name, tags, shake, protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd };
+  food.push(newItem);
   MACROS.protein.current += proteinAdd;
   MACROS.carbs.current += carbsAdd;
   MACROS.fat.current += fatAdd;
@@ -1073,14 +1169,18 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
   if (LIVE) {
     try {
       const { data: { user } } = await sb.auth.getUser();
-      await sb.from("nutrition_log").insert({
+      const { data: inserted, error } = await sb.from("nutrition_log").insert({
         user_id: user.id, name, date: nutritionDate, covers, had_shake: shake,
         protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd,
-      });
+      }).select().single();
+      if (error) throw error;
+      newItem.id = inserted.id;
+      renderFood();
       showToast(known ? "Logged — used your saved macros" : (nutritionDate === todayStr() ? "Logged" : "Logged for " + nutritionDate));
       recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd);
     } catch (e) { showToast("Couldn't save — check connection", true); }
   } else {
+    newItem.id = "demo-" + Math.random().toString(36).slice(2);
     showToast("Logged (demo — not saved)");
   }
 });
@@ -1143,6 +1243,8 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     if (btn.dataset.tab === "progress") renderChart();
     if (btn.dataset.tab === "plan") renderPlan();
     if (btn.dataset.tab === "profile") renderProfile();
+    if (btn.dataset.tab === "workout") { renderWorkout(); updateWorkoutBar(); renderDayPicker(); }
+    if (btn.dataset.tab === "nutrition") { renderRings(); renderFood(); updateNutritionEyebrow(); }
   });
 });
 
@@ -1357,9 +1459,13 @@ async function loadNutritionForDate(date) {
     fat:     { current: sums.fat,     target: Number(t.fat_g) || 0,     color: "var(--series-fat)" },
   };
   food = (rows || []).map(r => ({
+    id: r.id,
     name: r.name,
     tags: (r.covers || []).map(c => c.toLowerCase()),
     shake: !!r.had_shake,
+    protein_g: Number(r.protein_g) || 0,
+    carbs_g: Number(r.carbs_g) || 0,
+    fat_g: Number(r.fat_g) || 0,
   }));
 }
 
