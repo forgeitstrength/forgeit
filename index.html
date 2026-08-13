@@ -270,6 +270,34 @@
   .plan-ex-name { color: var(--text-primary); font-weight: 600; }
   .plan-ex-sets { color: var(--text-muted); text-align: right; flex-shrink: 0; max-width: 55%; }
 
+  /* day / date pickers on Today */
+  .day-picker-row { display: flex; gap: 8px; overflow-x: auto; padding: 12px 0 2px; margin: 0 -2px 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .day-picker-row::-webkit-scrollbar { display: none; }
+  .day-pill {
+    flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 7px 12px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface-2);
+    cursor: pointer; min-width: 46px;
+  }
+  .day-pill.suggested { border-color: var(--accent); }
+  .day-pill.active { background: var(--accent); border-color: var(--accent); }
+  .day-pill.active .day-pill-code, .day-pill.active .day-pill-name { color: #fff; }
+  .day-pill.inactive-day { opacity: .55; }
+  .day-pill-code { font-size: 13px; font-weight: 700; color: var(--text-primary); }
+  .day-pill-name { font-size: 9px; font-weight: 600; color: var(--text-muted); text-align: center; line-height: 1.2; white-space: nowrap; }
+  .cycle-row { display: flex; align-items: center; gap: 8px; }
+  .cycle-btn {
+    width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--border); background: var(--surface-2);
+    color: var(--text-secondary); font-size: 14px; font-weight: 700; display: flex; align-items: center;
+    justify-content: center; cursor: pointer; padding: 0; flex-shrink: 0;
+  }
+  .cycle-btn:active { background: var(--accent-soft); }
+  .session-date-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .date-input-inline {
+    font: inherit; font-size: 12.5px; font-weight: 650; color: var(--text-secondary);
+    background: var(--surface-2); border: 1.5px solid var(--border); border-radius: 8px; padding: 5px 8px;
+  }
+  .date-inline-label { font-size: 12px; color: var(--text-muted); font-weight: 650; }
+
   /* progress tab */
   .stat-row { display: flex; gap: 10px; margin-bottom: 14px; }
   .stat-tile {
@@ -404,12 +432,23 @@
   <div class="card">
     <div class="card-head">
       <div>
-        <div class="card-eyebrow">Today's workout</div>
+        <div class="card-eyebrow">Workout session</div>
         <div class="card-title" id="workoutTitle">—</div>
-        <div class="card-sub" id="workoutSub">—</div>
+        <div class="card-sub cycle-row">
+          <button class="cycle-btn" id="cyclePrevBtn" title="Previous cycle">‹</button>
+          <span id="workoutSub">—</span>
+          <button class="cycle-btn" id="cycleNextBtn" title="Next cycle">›</button>
+        </div>
       </div>
       <div class="badge">Not started</div>
     </div>
+
+    <div class="day-picker-row" id="dayPickerRow"></div>
+    <div class="session-date-row">
+      <span class="date-inline-label">Log for date</span>
+      <input type="date" id="sessionDateInput" class="date-input-inline">
+    </div>
+
     <div class="bar-track"><div class="bar-fill" id="workoutBar" style="width:0%"></div></div>
     <div class="bar-caption"><span id="workoutCount">0 / 0 sets</span><span id="workoutPct">0%</span></div>
 
@@ -421,9 +460,13 @@
   <div class="card">
     <div class="card-head">
       <div>
-        <div class="card-eyebrow">Nutrition · today</div>
+        <div class="card-eyebrow" id="nutritionEyebrow">Nutrition · today</div>
         <div class="card-title">Macros</div>
       </div>
+    </div>
+    <div class="session-date-row" style="margin-top:0;margin-bottom:10px;">
+      <span class="date-inline-label">Log for date</span>
+      <input type="date" id="nutritionDateInput" class="date-input-inline">
     </div>
     <div class="rings-row" id="ringsRow"></div>
 
@@ -643,6 +686,12 @@ let currentCycleNumber = 1;
 let checked = {};
 let activeTags = new Set();
 let wasComplete = false;
+let DAY_OPTIONS = [];       // every workout day (active + paused) for the day picker
+let selectedDayId = null;   // day currently shown on the Today card
+let selectedCycle = 1;      // cycle currently shown for that day
+let suggestedDayId = null;  // what the auto-rotation would have picked
+let sessionDate = todayStr();    // date a finished workout gets logged under
+let nutritionDate = todayStr();  // date being viewed/logged in the nutrition card
 
 function totalSets() { return WORKOUT.groups.reduce((a,g) => a + g.sets.length, 0); }
 function doneSets() { return Object.values(checked).filter(Boolean).length; }
@@ -805,7 +854,7 @@ document.getElementById("finishBtn").addEventListener("click", async () => {
       const { data: { user } } = await sb.auth.getUser();
       const { data: sessionRow, error: sErr } = await sb.from("sessions").insert({
         user_id: user.id, workout_day_id: currentWorkoutDayId, cycle_number: currentCycleNumber,
-        date: todayStr(), sets_completed: done, sets_total: total,
+        date: sessionDate, sets_completed: done, sets_total: total,
       }).select().single();
       if (sErr) throw sErr;
       // persist what was actually performed (may differ from the plan if edited) per exercise
@@ -816,13 +865,51 @@ document.getElementById("finishBtn").addEventListener("click", async () => {
         completed: g.sets.every((s, si) => checked[gi + "-" + si]),
       }));
       if (logs.length) await sb.from("session_exercise_logs").insert(logs);
-      showToast("Workout logged for today");
+      showToast(sessionDate === todayStr() ? "Workout logged for today" : "Workout logged for " + sessionDate);
       loadSessionsHistory();
     } catch (e) { showToast("Couldn't save — check connection", true); }
   } else {
-    showToast("Workout logged for today (demo — not saved)");
+    showToast("Workout logged (demo — not saved)");
   }
 });
+
+// ---------- day / cycle picker ----------
+function renderDayPicker() {
+  const row = document.getElementById("dayPickerRow");
+  if (!row) return;
+  if (!DAY_OPTIONS.length) { row.innerHTML = ""; return; }
+  row.innerHTML = DAY_OPTIONS.map(d => `
+    <div class="day-pill ${d.id === selectedDayId ? "active" : ""} ${d.id === suggestedDayId && d.id !== selectedDayId ? "suggested" : ""} ${!d.active ? "inactive-day" : ""}" data-day-id="${d.id}" title="${d.id === suggestedDayId ? "Next up in rotation" : ""}">
+      <div class="day-pill-code">${d.code}</div>
+      <div class="day-pill-name">${escapeHtml((d.name || "").split(" ")[0])}</div>
+    </div>`).join("");
+  row.querySelectorAll(".day-pill").forEach(p => {
+    p.addEventListener("click", async () => {
+      if (!LIVE) { showToast("Connect your account to switch days"); return; }
+      try {
+        await loadProgram(p.dataset.dayId);
+        renderWorkout(); updateWorkoutBar(); renderDayPicker();
+      } catch (e) { showToast("Couldn't load that day", true); }
+    });
+  });
+}
+
+async function stepCycle(delta) {
+  if (!LIVE || !selectedDayId) return;
+  const maxCycle = WORKOUT.maxCycle || 1;
+  const newCycle = Math.max(1, Math.min(maxCycle, selectedCycle + delta));
+  if (newCycle === selectedCycle) return;
+  try {
+    await loadProgram(selectedDayId, newCycle);
+    renderWorkout(); updateWorkoutBar(); renderDayPicker();
+  } catch (e) { showToast("Couldn't load that cycle", true); }
+}
+document.getElementById("cyclePrevBtn").addEventListener("click", () => stepCycle(-1));
+document.getElementById("cycleNextBtn").addEventListener("click", () => stepCycle(1));
+
+const sessionDateInput = document.getElementById("sessionDateInput");
+sessionDateInput.value = sessionDate;
+sessionDateInput.addEventListener("change", () => { sessionDate = sessionDateInput.value || todayStr(); });
 
 // ---------- rings ----------
 function ringSVG(pct, color) {
@@ -987,10 +1074,10 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
     try {
       const { data: { user } } = await sb.auth.getUser();
       await sb.from("nutrition_log").insert({
-        user_id: user.id, name, date: todayStr(), covers, had_shake: shake,
+        user_id: user.id, name, date: nutritionDate, covers, had_shake: shake,
         protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd,
       });
-      showToast(known ? "Logged — used your saved macros" : "Logged");
+      showToast(known ? "Logged — used your saved macros" : (nutritionDate === todayStr() ? "Logged" : "Logged for " + nutritionDate));
       recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd);
     } catch (e) { showToast("Couldn't save — check connection", true); }
   } else {
@@ -1129,7 +1216,7 @@ document.getElementById("saveGoalsBtn").addEventListener("click", async () => {
       user_id: user.id, effective_date: todayStr(), protein_g, carbs_g, fat_g, weight_target_lb, target_date,
     });
     PROFILE.weight_target_lb = weight_target_lb; PROFILE.target_date = target_date;
-    await loadNutritionToday();
+    await loadNutritionForDate(nutritionDate);
     renderRings();
     renderProfile();
     showToast("Goals saved");
@@ -1150,30 +1237,50 @@ function showToast(msg, isErr) {
 // LIVE DATA LAYER (Supabase) — only used when CONFIG is wired
 // ============================================================
 
-async function loadProgram() {
+// dayIdOverride / cycleOverride let the day-picker and cycle stepper force a
+// specific session instead of the auto-computed "next in rotation" one.
+async function loadProgram(dayIdOverride, cycleOverride) {
   const { data: { user } } = await sb.auth.getUser();
-  const { data: days, error: dErr } = await sb.from("workout_days")
-    .select("*").eq("user_id", user.id).eq("active", true).order("sequence_order");
-  if (dErr || !days || !days.length) throw dErr || new Error("no program found");
+  const { data: allDays, error: dErr } = await sb.from("workout_days")
+    .select("*").eq("user_id", user.id).order("sequence_order");
+  if (dErr || !allDays || !allDays.length) throw dErr || new Error("no program found");
+  DAY_OPTIONS = allDays;
+  const activeDays = allDays.filter(d => d.active);
+  const rotationDays = activeDays.length ? activeDays : allDays;
 
   const { data: lastSessions } = await sb.from("sessions")
     .select("*").eq("user_id", user.id).order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1);
   const lastSession = lastSessions && lastSessions[0];
 
-  let nextDay, nextCycle;
+  let autoDay, autoCycle;
   if (!lastSession) {
-    nextDay = days[0]; nextCycle = 1;
+    autoDay = rotationDays[0]; autoCycle = 1;
   } else {
-    const lastDay = days.find(d => d.id === lastSession.workout_day_id);
-    if (!lastDay) { nextDay = days[0]; nextCycle = 1; }
+    const lastDay = rotationDays.find(d => d.id === lastSession.workout_day_id);
+    if (!lastDay) { autoDay = rotationDays[0]; autoCycle = 1; }
     else {
-      const idx = days.findIndex(d => d.id === lastDay.id);
-      nextDay = days[(idx + 1) % days.length];
+      const idx = rotationDays.findIndex(d => d.id === lastDay.id);
+      autoDay = rotationDays[(idx + 1) % rotationDays.length];
       const { data: prevOnNextDay } = await sb.from("sessions")
+        .select("cycle_number").eq("user_id", user.id).eq("workout_day_id", autoDay.id)
+        .order("cycle_number", { ascending: false }).limit(1);
+      autoCycle = prevOnNextDay && prevOnNextDay[0] ? prevOnNextDay[0].cycle_number + 1 : 1;
+    }
+  }
+  suggestedDayId = autoDay ? autoDay.id : null;
+
+  let nextDay, nextCycle;
+  if (dayIdOverride) {
+    nextDay = DAY_OPTIONS.find(d => d.id === dayIdOverride) || autoDay;
+    if (cycleOverride) { nextCycle = cycleOverride; }
+    else {
+      const { data: prevOnDay } = await sb.from("sessions")
         .select("cycle_number").eq("user_id", user.id).eq("workout_day_id", nextDay.id)
         .order("cycle_number", { ascending: false }).limit(1);
-      nextCycle = prevOnNextDay && prevOnNextDay[0] ? prevOnNextDay[0].cycle_number + 1 : 1;
+      nextCycle = prevOnDay && prevOnDay[0] ? prevOnDay[0].cycle_number + 1 : 1;
     }
+  } else {
+    nextDay = autoDay; nextCycle = autoCycle;
   }
 
   const { data: exercises, error: eErr } = await sb.from("exercises")
@@ -1190,7 +1297,9 @@ async function loadProgram() {
 
   currentWorkoutDayId = nextDay.id;
   currentCycleNumber = cycleForLookup;
-  WORKOUT = { title: `${nextDay.code} · ${nextDay.name}`, cycle: `Cycle ${cycleForLookup} of ${maxCycle}`, groups };
+  selectedDayId = nextDay.id;
+  selectedCycle = cycleForLookup;
+  WORKOUT = { title: `${nextDay.code} · ${nextDay.name}`, cycle: `Cycle ${cycleForLookup} of ${maxCycle}`, groups, maxCycle };
   checked = {};
 }
 
@@ -1228,11 +1337,10 @@ async function loadPlan() {
   });
 }
 
-async function loadNutritionToday() {
+async function loadNutritionForDate(date) {
   const { data: { user } } = await sb.auth.getUser();
-  const today = todayStr();
   const { data: rows } = await sb.from("nutrition_log")
-    .select("*").eq("user_id", user.id).eq("date", today).order("created_at");
+    .select("*").eq("user_id", user.id).eq("date", date).order("created_at");
   const { data: targets } = await sb.from("daily_targets")
     .select("*").eq("user_id", user.id).order("effective_date", { ascending: false }).limit(1);
   const t = (targets && targets[0]) || { protein_g: 165, carbs_g: 380, fat_g: 70 };
@@ -1292,10 +1400,17 @@ function setBanner(msg, show) {
   b.innerHTML = msg;
 }
 
+function updateNutritionEyebrow() {
+  const el = document.getElementById("nutritionEyebrow");
+  if (!el) return;
+  const isToday = nutritionDate === todayStr();
+  el.textContent = "Nutrition · " + (isToday ? "today" : new Date(nutritionDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" }));
+}
+
 async function loadAll() {
   try {
     await loadProgram();
-    await Promise.all([loadNutritionToday(), loadSessionsHistory(), computeStreak(), loadPlan(), loadFoodItems(), loadProfile()]);
+    await Promise.all([loadNutritionForDate(nutritionDate), loadSessionsHistory(), computeStreak(), loadPlan(), loadFoodItems(), loadProfile()]);
     setBanner("", false);
   } catch (e) {
     setBanner(`<b>Couldn't load your data.</b> ${e.message || "Check your connection and try again."}`, true);
@@ -1304,9 +1419,22 @@ async function loadAll() {
   updateWorkoutBar();
   renderRings();
   renderFood();
+  renderDayPicker();
+  updateNutritionEyebrow();
   if (document.getElementById("view-plan").classList.contains("active")) renderPlan();
   if (document.getElementById("view-profile").classList.contains("active")) renderProfile();
 }
+
+const nutritionDateInput = document.getElementById("nutritionDateInput");
+nutritionDateInput.value = nutritionDate;
+nutritionDateInput.addEventListener("change", async () => {
+  nutritionDate = nutritionDateInput.value || todayStr();
+  updateNutritionEyebrow();
+  if (LIVE) {
+    try { await loadNutritionForDate(nutritionDate); renderRings(); renderFood(); }
+    catch (e) { showToast("Couldn't load that date", true); }
+  }
+});
 
 // ============================================================
 // AUTH
@@ -1376,10 +1504,14 @@ if (LIVE) {
   // demo mode — no backend wired yet
   showApp();
   setBanner("<b>Demo mode.</b> This preview runs on seeded sample data — it isn't syncing to a backend yet.", true);
+  DAY_OPTIONS = DEMO_PLAN.map(d => ({ id: d.id, code: d.code, name: d.name, active: true }));
+  selectedDayId = "p"; suggestedDayId = "p";
   renderWorkout();
   updateWorkoutBar();
   renderRings();
   renderFood();
+  renderDayPicker();
+  updateNutritionEyebrow();
 }
 </script>
 </body>
