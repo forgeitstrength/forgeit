@@ -802,34 +802,42 @@ const X_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 // a completed workout that was already logged today stays pinned (no auto-jump to
 // tomorrow's session) and shows a celebration screen instead of the editable set list,
 // until the user explicitly asks to edit it.
+// only count sets that were actually checked — an untouched/skipped exercise's
+// prescribed weight shouldn't count toward "volume moved" for the day
 function computeWorkoutVolume() {
-  let volume = 0, setsWithLoad = 0;
-  WORKOUT.groups.forEach(g => g.sets.forEach(s => {
+  let volume = 0;
+  WORKOUT.groups.forEach((g, gi) => g.sets.forEach((s, si) => {
+    if (!checked[gi + "-" + si]) return;
     const p = parseSetStr(s);
     if (!p.split) return;
     const w = parseFloat(p.weight), r = parseFloat(p.reps);
-    if (isFinite(w) && isFinite(r)) { volume += w * r; setsWithLoad++; }
+    if (isFinite(w) && isFinite(r)) volume += w * r;
   }));
-  return { volume: Math.round(volume), setsWithLoad };
+  return { volume: Math.round(volume) };
 }
 
 const CELEBRATION_EMOJIS = ["🎉", "💪", "🔥", "🏆", "⚡️"];
 function renderWorkoutCelebration() {
   const box = document.getElementById("workoutCelebration");
-  const total = totalSets();
+  const total = totalSets(), done = doneSets();
+  const isFullyDone = total > 0 && done === total;
   const { volume } = computeWorkoutVolume();
   const emoji = CELEBRATION_EMOJIS[(total + WORKOUT.groups.length) % CELEBRATION_EMOJIS.length];
+  const titleText = isFullyDone ? "Workout crushed!" : "Session wrapped up";
+  const noteText = isFullyDone
+    ? "Meticulous work — every set logged, nothing skipped. Tomorrow's session is already queued when you're ready."
+    : "Logged and done for today — no shame in stopping when you're out of time or gas. What's unchecked stayed untouched, nothing was forced.";
   box.innerHTML = `
     <div class="celebrate-wrap">
       <div class="celebrate-emoji">${emoji}<span class="celebrate-emoji-2">💪</span><span class="celebrate-emoji-3">🔥</span></div>
-      <div class="celebrate-title">Workout crushed!</div>
+      <div class="celebrate-title">${titleText}</div>
       <div class="celebrate-sub">${escapeHtml(WORKOUT.title)} · ${escapeHtml(WORKOUT.cycle)} — logged for today.</div>
       <div class="celebrate-stats">
-        <div class="celebrate-stat"><div class="celebrate-num">${total}</div><div class="celebrate-label">Sets done</div></div>
+        <div class="celebrate-stat"><div class="celebrate-num">${done}/${total}</div><div class="celebrate-label">Sets done</div></div>
         <div class="celebrate-stat"><div class="celebrate-num">${WORKOUT.groups.length}</div><div class="celebrate-label">Exercises</div></div>
         ${volume > 0 ? `<div class="celebrate-stat"><div class="celebrate-num">${volume.toLocaleString()}</div><div class="celebrate-label">Lb moved (est.)</div></div>` : ""}
       </div>
-      <div class="celebrate-note">Meticulous work — every set logged, nothing skipped. Tomorrow's session is already queued when you're ready.</div>
+      <div class="celebrate-note">${noteText}</div>
       <button class="btn ghost" id="editDoneWorkoutBtn" style="margin-top:16px;">Edit today's sets</button>
     </div>`;
   document.getElementById("editDoneWorkoutBtn").addEventListener("click", () => {
@@ -845,7 +853,7 @@ function renderWorkout() {
   document.getElementById("workoutTitle").textContent = WORKOUT.title;
   document.getElementById("workoutSub").textContent = WORKOUT.cycle + (WORKOUT.sub ? " · " + WORKOUT.sub : "");
 
-  const showCelebration = !!WORKOUT.alreadyDoneToday && !celebrationDismissed;
+  const showCelebration = !!WORKOUT.finishedToday && !celebrationDismissed;
   document.getElementById("workoutCelebration").style.display = showCelebration ? "block" : "none";
   document.getElementById("workoutActiveArea").style.display = showCelebration ? "none" : "block";
   if (showCelebration) { renderWorkoutCelebration(); return; }
@@ -970,28 +978,47 @@ function updateWorkoutBar() {
   const total = totalSets(), done = doneSets();
   const pct = total ? Math.round((done/total)*100) : 0;
   const isDone = total > 0 && done === total;
+  const finishedToday = !!WORKOUT.finishedToday;
   const bar = document.getElementById("workoutBar");
   bar.style.width = pct + "%";
-  bar.classList.toggle("is-done", isDone);
+  bar.classList.toggle("is-done", isDone || finishedToday);
   document.getElementById("workoutCount").textContent = `${done} / ${total} sets`;
   document.getElementById("workoutPct").textContent = pct + "%";
   const badge = document.querySelector(".badge");
   const finishBtn = document.getElementById("finishBtn");
-  if (done === 0) { badge.textContent = "Not started"; badge.classList.remove("is-done"); finishBtn.textContent = "Save workout"; finishBtn.classList.remove("done-state"); }
-  else if (done < total) { badge.textContent = "In progress"; badge.classList.remove("is-done"); finishBtn.textContent = `Save workout (${done}/${total})`; finishBtn.classList.remove("done-state"); }
-  else { badge.textContent = "Complete"; badge.classList.add("is-done"); finishBtn.textContent = "Workout logged ✓"; finishBtn.classList.add("done-state"); }
+
+  if (finishedToday) {
+    // a session is already saved for today — that's the deliberate "I'm done" signal,
+    // whether or not every set got checked
+    badge.textContent = isDone ? "Complete" : "Logged";
+    badge.classList.add("is-done");
+    finishBtn.textContent = celebrationDismissed ? "Update saved workout" : "Workout logged ✓";
+    finishBtn.classList.add("done-state");
+  } else if (done === 0) {
+    badge.textContent = "Not started"; badge.classList.remove("is-done");
+    finishBtn.textContent = "Save workout"; finishBtn.classList.remove("done-state");
+  } else if (done < total) {
+    badge.textContent = "In progress"; badge.classList.remove("is-done");
+    finishBtn.textContent = `Save workout (${done}/${total})`; finishBtn.classList.remove("done-state");
+  } else {
+    badge.textContent = "Complete"; badge.classList.add("is-done");
+    finishBtn.textContent = "Workout logged ✓"; finishBtn.classList.add("done-state");
+  }
 
   const hero = document.getElementById("heroLine");
   const sub = document.getElementById("heroSub");
-  if (done === 0) { hero.textContent = "Ready when you are"; sub.textContent = "Next up in your rotation — take your time."; }
+  if (finishedToday) {
+    if (isDone) { hero.textContent = "Nice work — that's the session."; sub.textContent = "Logged. On to the next one in your rotation."; }
+    else { hero.textContent = "Session logged for today."; sub.textContent = `${done} of ${total} sets done — the rest stayed untouched, nothing forced.`; }
+  } else if (done === 0) { hero.textContent = "Ready when you are"; sub.textContent = "Next up in your rotation — take your time."; }
   else if (done < total) { hero.textContent = `${done} down, ${total-done} to go`; sub.textContent = "Good pace — stay controlled."; }
   else { hero.textContent = "Nice work — that's the session."; sub.textContent = "Logged. On to the next one in your rotation."; }
 
-  if (isDone && !wasComplete) {
+  if ((isDone || finishedToday) && !wasComplete) {
     badge.classList.add("pop");
     setTimeout(() => badge.classList.remove("pop"), 400);
   }
-  wasComplete = isDone;
+  wasComplete = isDone || finishedToday;
 }
 
 document.getElementById("finishBtn").addEventListener("click", async () => {
@@ -1008,11 +1035,27 @@ document.getElementById("finishBtn").addEventListener("click", async () => {
   if (LIVE) {
     try {
       const { data: { user } } = await sb.auth.getUser();
-      const { data: sessionRow, error: sErr } = await sb.from("sessions").insert({
-        user_id: user.id, workout_day_id: currentWorkoutDayId, cycle_number: currentCycleNumber,
-        date: sessionDate, sets_completed: done, sets_total: total,
-      }).select().single();
-      if (sErr) throw sErr;
+      // if this exact day/cycle/date was already saved today (e.g. you dismissed the
+      // celebration to add a couple more sets), update that session instead of
+      // inserting a duplicate row
+      const { data: existingRows } = await sb.from("sessions").select("*")
+        .eq("user_id", user.id).eq("workout_day_id", currentWorkoutDayId)
+        .eq("cycle_number", currentCycleNumber).eq("date", sessionDate).limit(1);
+      const existing = existingRows && existingRows[0];
+
+      let sessionRow;
+      if (existing) {
+        await sb.from("sessions").update({ sets_completed: done, sets_total: total }).eq("id", existing.id);
+        await sb.from("session_exercise_logs").delete().eq("session_id", existing.id);
+        sessionRow = existing;
+      } else {
+        const { data: inserted, error: sErr } = await sb.from("sessions").insert({
+          user_id: user.id, workout_day_id: currentWorkoutDayId, cycle_number: currentCycleNumber,
+          date: sessionDate, sets_completed: done, sets_total: total,
+        }).select().single();
+        if (sErr) throw sErr;
+        sessionRow = inserted;
+      }
       // persist what was actually performed (may differ from the plan if edited) per exercise
       const logs = WORKOUT.groups.map((g, gi) => ({ g, gi })).filter(x => x.g.id).map(({ g, gi }) => ({
         session_id: sessionRow.id,
@@ -1624,7 +1667,6 @@ async function loadProgram(dayIdOverride, cycleOverride) {
   selectedCycle = cycleForLookup;
   checked = {};
 
-  let showCelebrationForThis = false;
   if (alreadyDoneToday) {
     // pull back what was actually logged so the pinned/celebration view reflects reality
     // (session_exercise_logs.completed is per-exercise, so only fully-completed exercises get checked)
@@ -1635,14 +1677,15 @@ async function loadProgram(dayIdOverride, cycleOverride) {
       if (log.actual) groups[gi].sets = log.actual.split(",").map(s => s.trim());
       if (log.completed) groups[gi].sets.forEach((s, si) => { checked[gi + "-" + si] = true; });
     });
-    const totalNow = groups.reduce((a, g) => a + g.sets.length, 0);
-    const doneNow = Object.values(checked).filter(Boolean).length;
-    showCelebrationForThis = totalNow > 0 && doneNow === totalNow;
     celebrationDismissed = false;
     groupOpenState = {}; // fresh collapse state for the (now current) actual sets
   }
 
-  WORKOUT = { title: `${nextDay.code} · ${nextDay.name}`, cycle: `Cycle ${cycleForLookup} of ${maxCycle}`, groups, maxCycle, alreadyDoneToday: showCelebrationForThis, pinnedToday: alreadyDoneToday };
+  // "finished for today" means a session was already saved for this pinned day —
+  // NOT that every set got checked. Clicking Save is the deliberate "I'm done" signal;
+  // whatever's unchecked stayed skipped on purpose (out of time, fatigued, etc.) and
+  // is never force-completed.
+  WORKOUT = { title: `${nextDay.code} · ${nextDay.name}`, cycle: `Cycle ${cycleForLookup} of ${maxCycle}`, groups, maxCycle, finishedToday: alreadyDoneToday, pinnedToday: alreadyDoneToday };
 }
 
 async function loadPlan() {
