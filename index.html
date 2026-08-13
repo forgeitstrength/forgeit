@@ -142,11 +142,12 @@
   .ex-name { font-size: 14.5px; font-weight: 650; margin-bottom: 2px; }
   .ex-note { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.45; }
   .set-row {
-    display: flex; align-items: center; gap: 9px;
-    padding: 10px 2px; border-top: 1px solid var(--gridline);
+    display: flex; align-items: center; gap: 8px;
+    padding: 7px 2px; border-top: 1px solid var(--gridline);
     font-size: 14.5px; user-select: none;
   }
   .ex-group:first-of-type .set-row:first-child { border-top: none; }
+  .set-num { width: 16px; flex-shrink: 0; text-align: center; font-size: 11.5px; font-weight: 700; color: var(--text-muted); }
   .chk {
     width: 21px; height: 21px; border-radius: 7px; border: 1.5px solid var(--text-muted);
     flex-shrink: 0; display: flex; align-items: center; justify-content: center;
@@ -154,14 +155,22 @@
   }
   .chk.on { background: var(--status-good); border-color: var(--status-good); }
   .chk.on svg { width: 13px; height: 13px; }
-  .set-label.done { color: var(--text-muted); text-decoration: line-through; text-decoration-color: var(--gridline); }
-  .set-label { flex: 1; cursor: text; padding: 4px 6px; margin: -4px -6px; border-radius: 7px; }
-  .set-label:active { background: var(--surface-2); }
-  .set-edit-input {
-    flex: 1; font: inherit; color: inherit; background: var(--surface-2); border: 1.5px solid var(--accent);
-    border-radius: 7px; padding: 4px 7px; font-size: 14.5px; font-family: inherit; min-width: 0;
+  .set-fields { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .set-field {
+    flex: 1; min-width: 0; width: 0; text-align: center; font-size: 14.5px; font-weight: 650; font-family: inherit;
+    padding: 8px 3px; border-radius: 9px; border: 1.5px solid transparent; background: var(--surface-2);
+    color: var(--text-primary); -webkit-appearance: none; appearance: none;
   }
-  .set-edit-input:focus { outline: none; }
+  .set-field::placeholder { color: var(--text-muted); font-weight: 500; }
+  .set-field:focus { outline: none; border-color: var(--accent); background: var(--surface-1); }
+  .set-field.is-done { color: var(--text-muted); }
+  .set-x { font-size: 12px; color: var(--text-muted); font-weight: 700; flex-shrink: 0; }
+  .set-col-labels { display: flex; align-items: center; gap: 8px; padding: 2px 2px 5px; }
+  .set-col-labels .set-num { visibility: hidden; }
+  .set-col-labels .chk { visibility: hidden; }
+  .set-col-labels .set-remove { visibility: hidden; }
+  .set-col-labels .set-fields { display: flex; gap: 6px; }
+  .set-col-label { flex: 1; text-align: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
   .set-remove {
     width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%; border: none; background: none;
     color: var(--text-muted); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
@@ -172,7 +181,6 @@
     color: var(--accent); cursor: pointer; border: none; background: none; font-family: inherit; width: 100%;
   }
   .add-set-btn svg { width: 15px; height: 15px; }
-  .edit-hint { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
   .btn {
     display: block; width: 100%; text-align: center;
@@ -643,6 +651,23 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
 
+// a set is stored as one string ("45 x 12", "BW x 9", "complete", "20-30 min").
+// when it contains "x" we split it into a weight field + reps field, app-style;
+// otherwise it's shown as a single free-text field (warm-ups, cardio, holds).
+function parseSetStr(str) {
+  const m = String(str).match(/^(.*?)\s*[x×]\s*(.+)$/i);
+  if (m) return { weight: m[1].trim(), reps: m[2].trim(), split: true };
+  return { weight: String(str).trim(), reps: "", split: false };
+}
+function formatSetStr(weight, reps, split) {
+  weight = (weight || "").trim();
+  reps = (reps || "").trim();
+  if (!split || !reps) return weight;
+  return `${weight} x ${reps}`;
+}
+const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg>';
+const X_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+
 function renderWorkout() {
   document.getElementById("workoutTitle").textContent = WORKOUT.title;
   document.getElementById("workoutSub").textContent = WORKOUT.cycle + (WORKOUT.sub ? " · " + WORKOUT.sub : "");
@@ -653,13 +678,26 @@ function renderWorkout() {
     div.className = "ex-group";
     let html = `<div class="ex-name">${g.name}</div>`;
     if (g.note) html += `<div class="ex-note">${g.note}</div>`;
+    const anySplit = g.sets.some(s => parseSetStr(s).split);
+    if (anySplit) {
+      html += `<div class="set-col-labels"><div class="set-num"></div><div class="chk"></div>
+        <div class="set-fields"><div class="set-col-label">Weight</div><div class="set-col-label">Reps</div></div>
+        <div class="set-remove"></div></div>`;
+    }
     g.sets.forEach((s, si) => {
       const key = gi + "-" + si;
       const isOn = !!checked[key];
-      html += `<div class="set-row" data-gi="${gi}" data-si="${si}">
-        <div class="chk chk-toggle ${isOn ? "on":""}">${isOn ? '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg>' : ""}</div>
-        <div class="set-label set-edit ${isOn ? "done":""}">${escapeHtml(s)}</div>
-        <button class="set-remove set-remove-btn" title="Remove set"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      const p = parseSetStr(s);
+      const fieldsHtml = p.split
+        ? `<input class="set-field ${isOn ? "is-done":""}" data-part="weight" value="${escapeHtml(p.weight)}" placeholder="wt" inputmode="text">
+           <span class="set-x">×</span>
+           <input class="set-field ${isOn ? "is-done":""}" data-part="reps" value="${escapeHtml(p.reps)}" placeholder="reps" inputmode="text">`
+        : `<input class="set-field ${isOn ? "is-done":""}" data-part="weight" value="${escapeHtml(p.weight)}" placeholder="detail">`;
+      html += `<div class="set-row" data-gi="${gi}" data-si="${si}" data-split="${p.split}">
+        <div class="set-num">${si + 1}</div>
+        <div class="chk chk-toggle ${isOn ? "on":""}">${isOn ? CHECK_SVG : ""}</div>
+        <div class="set-fields">${fieldsHtml}</div>
+        <button class="set-remove set-remove-btn" title="Remove set">${X_SVG}</button>
       </div>`;
     });
     div.innerHTML = html;
@@ -682,28 +720,17 @@ function renderWorkout() {
     });
   });
 
-  list.querySelectorAll(".set-edit").forEach(label => {
-    label.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const row = label.closest(".set-row");
-      const gi = +row.dataset.gi, si = +row.dataset.si;
-      const input = document.createElement("input");
-      input.className = "set-edit-input";
-      input.value = WORKOUT.groups[gi].sets[si];
-      label.replaceWith(input);
-      input.focus();
-      input.select();
-      const commit = () => {
-        const val = input.value.trim();
-        WORKOUT.groups[gi].sets[si] = val || WORKOUT.groups[gi].sets[si];
-        renderWorkout();
-      };
-      input.addEventListener("blur", commit);
-      input.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter") { ev.preventDefault(); input.blur(); }
-        if (ev.key === "Escape") { ev.preventDefault(); renderWorkout(); }
-      });
-    });
+  function commitRow(row) {
+    const gi = +row.dataset.gi, si = +row.dataset.si;
+    const split = row.dataset.split === "true";
+    const wField = row.querySelector('[data-part="weight"]');
+    const rField = row.querySelector('[data-part="reps"]');
+    const newVal = formatSetStr(wField.value, rField ? rField.value : "", split);
+    WORKOUT.groups[gi].sets[si] = newVal || WORKOUT.groups[gi].sets[si];
+  }
+  list.querySelectorAll(".set-field").forEach(inp => {
+    inp.addEventListener("blur", () => commitRow(inp.closest(".set-row")));
+    inp.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); inp.blur(); } });
   });
 
   list.querySelectorAll(".set-remove-btn").forEach(btn => {
