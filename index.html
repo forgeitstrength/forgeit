@@ -496,7 +496,8 @@
     <div class="day-picker-row" id="dayPickerRow"></div>
     <div class="session-date-row">
       <span class="date-inline-label">Log for date</span>
-      <input type="date" id="sessionDateInput" class="date-input-inline">
+      <input type="date" id="sessionDateInput" class="date-input-inline" max="">
+
     </div>
 
     <div id="workoutCelebration" style="display:none;"></div>
@@ -528,7 +529,7 @@
     </div>
     <div class="session-date-row" style="margin-top:0;margin-bottom:10px;">
       <span class="date-inline-label">Log for date</span>
-      <input type="date" id="nutritionDateInput" class="date-input-inline">
+      <input type="date" id="nutritionDateInput" class="date-input-inline" max="">
     </div>
     <div class="rings-row" id="ringsRow"></div>
 
@@ -994,6 +995,12 @@ function updateWorkoutBar() {
 }
 
 document.getElementById("finishBtn").addEventListener("click", async () => {
+  if (sessionDate > todayStr()) {
+    sessionDate = todayStr();
+    sessionDateInput.value = sessionDate;
+    showToast("Can't log a workout for a future date", true);
+    return;
+  }
   // save exactly what's checked — never force-complete sets the user didn't mark
   const total = totalSets(), done = doneSets();
   const dateLabel = sessionDate === todayStr() ? "today" : sessionDate;
@@ -1068,8 +1075,13 @@ document.getElementById("cyclePrevBtn").addEventListener("click", () => stepCycl
 document.getElementById("cycleNextBtn").addEventListener("click", () => stepCycle(1));
 
 const sessionDateInput = document.getElementById("sessionDateInput");
+sessionDateInput.max = todayStr();
 sessionDateInput.value = sessionDate;
-sessionDateInput.addEventListener("change", () => { sessionDate = sessionDateInput.value || todayStr(); });
+sessionDateInput.addEventListener("change", () => {
+  let val = sessionDateInput.value || todayStr();
+  if (val > todayStr()) { val = todayStr(); sessionDateInput.value = val; showToast("Can't log a workout for a future date", true); }
+  sessionDate = val;
+});
 
 // ---------- rings ----------
 function ringSVG(pct, color) {
@@ -1280,6 +1292,13 @@ async function recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fa
 }
 
 document.getElementById("logFoodBtn").addEventListener("click", async () => {
+  if (nutritionDate > todayStr()) {
+    nutritionDate = todayStr();
+    nutritionDateInput.value = nutritionDate;
+    updateNutritionEyebrow();
+    showToast("Can't log for a future date", true);
+    return;
+  }
   const input = document.getElementById("foodInput");
   const name = input.value.trim();
   if (!name) { input.focus(); return; }
@@ -1541,14 +1560,18 @@ async function loadProgram(dayIdOverride, cycleOverride) {
     .select("*").eq("user_id", user.id).order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1);
   const lastSession = lastSessions && lastSessions[0];
 
-  // if today's session is already logged, keep showing it instead of jumping ahead
-  // to the next day in rotation — the next day only becomes "today" tomorrow.
-  const alreadyDoneToday = !dayIdOverride && !!lastSession && lastSession.date === todayStr();
+  // "today's session already logged" pins the view to that exact session — whether
+  // we got here via auto-load or by the user tapping back onto that same day's pill.
+  // An explicit cycle picked via the stepper always wins (the user is deliberately
+  // browsing a specific cycle's prescription rather than looking at today's log).
+  const hasTodaySession = !!lastSession && lastSession.date === todayStr();
+  const targetsTodaysDay = !dayIdOverride || (hasTodaySession && dayIdOverride === lastSession.workout_day_id);
+  const alreadyDoneToday = hasTodaySession && targetsTodaysDay && cycleOverride === undefined;
 
   let autoDay, autoCycle;
   if (!lastSession) {
     autoDay = rotationDays[0]; autoCycle = 1;
-  } else if (alreadyDoneToday) {
+  } else if (hasTodaySession) {
     autoDay = allDays.find(d => d.id === lastSession.workout_day_id) || rotationDays[0];
     autoCycle = lastSession.cycle_number || 1;
   } else {
@@ -1566,7 +1589,11 @@ async function loadProgram(dayIdOverride, cycleOverride) {
   suggestedDayId = autoDay ? autoDay.id : null;
 
   let nextDay, nextCycle;
-  if (dayIdOverride) {
+  if (alreadyDoneToday) {
+    // pin to exactly the session already logged for today, regardless of how we got here
+    nextDay = allDays.find(d => d.id === lastSession.workout_day_id) || autoDay;
+    nextCycle = lastSession.cycle_number || 1;
+  } else if (dayIdOverride) {
     nextDay = DAY_OPTIONS.find(d => d.id === dayIdOverride) || autoDay;
     if (cycleOverride) { nextCycle = cycleOverride; }
     else {
@@ -1746,9 +1773,12 @@ async function loadAll() {
 }
 
 const nutritionDateInput = document.getElementById("nutritionDateInput");
+nutritionDateInput.max = todayStr();
 nutritionDateInput.value = nutritionDate;
 nutritionDateInput.addEventListener("change", async () => {
-  nutritionDate = nutritionDateInput.value || todayStr();
+  let val = nutritionDateInput.value || todayStr();
+  if (val > todayStr()) { val = todayStr(); nutritionDateInput.value = val; showToast("Can't log for a future date", true); }
+  nutritionDate = val;
   updateNutritionEyebrow();
   if (LIVE) {
     try { await loadNutritionForDate(nutritionDate); renderRings(); renderFood(); }
