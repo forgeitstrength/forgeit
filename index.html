@@ -182,6 +182,40 @@
   }
   .add-set-btn svg { width: 15px; height: 15px; }
 
+  /* collapsible exercise groups */
+  .ex-details { margin-top: 14px; border-top: 1px solid var(--gridline); padding-top: 10px; }
+  .ex-details:first-of-type { margin-top: 0; border-top: none; padding-top: 0; }
+  .ex-summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 2px 0; user-select: none; }
+  .ex-summary::-webkit-details-marker { display: none; }
+  .ex-summary .chev { flex-shrink: 0; }
+  .ex-details[open] .chev { transform: rotate(90deg); }
+  .ex-summary-text { flex: 1; min-width: 0; }
+  .ex-summary-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
+  .ex-done-badge {
+    width: 20px; height: 20px; border-radius: 50%; background: var(--status-good); color: #fff;
+    font-size: 11px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-weight: 700;
+  }
+  .ex-done-badge svg { width: 12px; height: 12px; }
+  .ex-body { padding-top: 4px; }
+  .ex-body .ex-note { margin-top: 2px; }
+
+  /* workout-complete celebration */
+  .celebrate-wrap { text-align: center; padding: 8px 4px 4px; }
+  .celebrate-emoji { font-size: 42px; line-height: 1; margin-bottom: 4px; position: relative; display: inline-block; animation: bounce-in .5s cubic-bezier(.2,.8,.3,1.3); }
+  .celebrate-emoji-2, .celebrate-emoji-3 { font-size: 20px; position: absolute; opacity: .9; }
+  .celebrate-emoji-2 { left: -24px; top: 8px; animation: float-left 1.4s ease-in-out infinite alternate; }
+  .celebrate-emoji-3 { right: -24px; top: 8px; animation: float-right 1.4s ease-in-out infinite alternate; }
+  @keyframes bounce-in { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); } }
+  @keyframes float-left { from { transform: translate(0,0) rotate(0deg); } to { transform: translate(-4px,-6px) rotate(-14deg); } }
+  @keyframes float-right { from { transform: translate(0,0) rotate(0deg); } to { transform: translate(4px,-6px) rotate(14deg); } }
+  .celebrate-title { font-size: 19px; font-weight: 700; margin-top: 4px; letter-spacing: -0.01em; }
+  .celebrate-sub { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+  .celebrate-stats { display: flex; gap: 10px; margin-top: 16px; }
+  .celebrate-stat { flex: 1; background: var(--surface-2); border-radius: 14px; padding: 12px 6px; }
+  .celebrate-num { font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+  .celebrate-label { font-size: 9.5px; color: var(--text-muted); font-weight: 650; margin-top: 2px; text-transform: uppercase; letter-spacing: .03em; }
+  .celebrate-note { font-size: 12px; color: var(--text-muted); margin-top: 14px; line-height: 1.5; }
+
   .btn {
     display: block; width: 100%; text-align: center;
     padding: 13px; border-radius: 13px; border: none;
@@ -321,6 +355,15 @@
   .chart-bar.zero { background: var(--gridline); }
   .chart-day { font-size: 10px; color: var(--text-muted); margin-top: 6px; font-weight: 600; }
 
+  .best-lifts-card summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .best-lifts-card summary::-webkit-details-marker { display: none; }
+  .best-lifts-card[open] .chev { transform: rotate(90deg); }
+  .lift-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid var(--gridline); }
+  .lift-row:first-child { border-top: none; }
+  .lift-name { font-size: 13.5px; font-weight: 650; }
+  .lift-detail { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
+  .lift-1rm { font-size: 16px; font-weight: 700; color: var(--accent); flex-shrink: 0; }
+
   .note-card { font-size: 12.5px; color: var(--text-muted); line-height: 1.55; padding: 14px 4px 0; }
 
   /* profile tab */
@@ -456,12 +499,16 @@
       <input type="date" id="sessionDateInput" class="date-input-inline">
     </div>
 
-    <div class="bar-track"><div class="bar-fill" id="workoutBar" style="width:0%"></div></div>
-    <div class="bar-caption"><span id="workoutCount">0 / 0 sets</span><span id="workoutPct">0%</span></div>
+    <div id="workoutCelebration" style="display:none;"></div>
 
-    <div id="exerciseList"></div>
+    <div id="workoutActiveArea">
+      <div class="bar-track"><div class="bar-fill" id="workoutBar" style="width:0%"></div></div>
+      <div class="bar-caption"><span id="workoutCount">0 / 0 sets</span><span id="workoutPct">0%</span></div>
 
-    <button class="btn" id="finishBtn">Save workout</button>
+      <div id="exerciseList"></div>
+
+      <button class="btn" id="finishBtn">Save workout</button>
+    </div>
   </div>
 
 </div>
@@ -525,7 +572,19 @@
     <div class="chart-bars" id="chartBars"></div>
   </div>
 
-  <div class="note-card">Trend lines, PRs, and nutrition adherence over time are next up for this tab.</div>
+  <details class="card best-lifts-card" id="bestLiftsCard" open>
+    <summary class="best-lifts-summary">
+      <div>
+        <div class="card-eyebrow">Best lifts</div>
+        <div class="card-title" style="margin:2px 0 0;">Est. 1-rep max</div>
+      </div>
+      <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+    </summary>
+    <div class="card-sub" style="margin-top:6px;">Calculated from your logged sets — a light estimate, not a max-out test.</div>
+    <div id="bestLiftsList"></div>
+  </details>
+
+  <div class="note-card">Trend lines and nutrition adherence over time are next up for this tab.</div>
 </div>
 
 <!-- PROFILE VIEW -->
@@ -711,6 +770,9 @@ let selectedCycle = 1;      // cycle currently shown for that day
 let suggestedDayId = null;  // what the auto-rotation would have picked
 let sessionDate = todayStr();    // date a finished workout gets logged under
 let nutritionDate = todayStr();  // date being viewed/logged in the nutrition card
+let celebrationDismissed = false;  // user tapped "edit today's sets" after finishing
+let groupOpenState = {};           // per-exercise MANUAL collapse override, keyed by exercise id (or index) — only set when the user taps a header; unset groups auto-collapse once complete
+let BEST_LIFTS = [];
 
 function totalSets() { return WORKOUT.groups.reduce((a,g) => a + g.sets.length, 0); }
 function doneSets() { return Object.values(checked).filter(Boolean).length; }
@@ -736,45 +798,115 @@ function formatSetStr(weight, reps, split) {
 const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg>';
 const X_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
 
+// a completed workout that was already logged today stays pinned (no auto-jump to
+// tomorrow's session) and shows a celebration screen instead of the editable set list,
+// until the user explicitly asks to edit it.
+function computeWorkoutVolume() {
+  let volume = 0, setsWithLoad = 0;
+  WORKOUT.groups.forEach(g => g.sets.forEach(s => {
+    const p = parseSetStr(s);
+    if (!p.split) return;
+    const w = parseFloat(p.weight), r = parseFloat(p.reps);
+    if (isFinite(w) && isFinite(r)) { volume += w * r; setsWithLoad++; }
+  }));
+  return { volume: Math.round(volume), setsWithLoad };
+}
+
+const CELEBRATION_EMOJIS = ["🎉", "💪", "🔥", "🏆", "⚡️"];
+function renderWorkoutCelebration() {
+  const box = document.getElementById("workoutCelebration");
+  const total = totalSets();
+  const { volume } = computeWorkoutVolume();
+  const emoji = CELEBRATION_EMOJIS[(total + WORKOUT.groups.length) % CELEBRATION_EMOJIS.length];
+  box.innerHTML = `
+    <div class="celebrate-wrap">
+      <div class="celebrate-emoji">${emoji}<span class="celebrate-emoji-2">💪</span><span class="celebrate-emoji-3">🔥</span></div>
+      <div class="celebrate-title">Workout crushed!</div>
+      <div class="celebrate-sub">${escapeHtml(WORKOUT.title)} · ${escapeHtml(WORKOUT.cycle)} — logged for today.</div>
+      <div class="celebrate-stats">
+        <div class="celebrate-stat"><div class="celebrate-num">${total}</div><div class="celebrate-label">Sets done</div></div>
+        <div class="celebrate-stat"><div class="celebrate-num">${WORKOUT.groups.length}</div><div class="celebrate-label">Exercises</div></div>
+        ${volume > 0 ? `<div class="celebrate-stat"><div class="celebrate-num">${volume.toLocaleString()}</div><div class="celebrate-label">Lb moved (est.)</div></div>` : ""}
+      </div>
+      <div class="celebrate-note">Meticulous work — every set logged, nothing skipped. Tomorrow's session is already queued when you're ready.</div>
+      <button class="btn ghost" id="editDoneWorkoutBtn" style="margin-top:16px;">Edit today's sets</button>
+    </div>`;
+  document.getElementById("editDoneWorkoutBtn").addEventListener("click", () => {
+    celebrationDismissed = true;
+    renderWorkout();
+    updateWorkoutBar();
+  });
+}
+
+function groupKey(g, gi) { return g.id || ("gi" + gi); }
+
 function renderWorkout() {
   document.getElementById("workoutTitle").textContent = WORKOUT.title;
   document.getElementById("workoutSub").textContent = WORKOUT.cycle + (WORKOUT.sub ? " · " + WORKOUT.sub : "");
+
+  const showCelebration = !!WORKOUT.alreadyDoneToday && !celebrationDismissed;
+  document.getElementById("workoutCelebration").style.display = showCelebration ? "block" : "none";
+  document.getElementById("workoutActiveArea").style.display = showCelebration ? "none" : "block";
+  if (showCelebration) { renderWorkoutCelebration(); return; }
+
   const list = document.getElementById("exerciseList");
   list.innerHTML = "";
   WORKOUT.groups.forEach((g, gi) => {
-    const div = document.createElement("div");
-    div.className = "ex-group";
-    let html = `<div class="ex-name">${g.name}</div>`;
-    if (g.note) html += `<div class="ex-note">${g.note}</div>`;
+    const key = groupKey(g, gi);
+    const total = g.sets.length;
+    const doneCount = g.sets.filter((s, si) => checked[gi + "-" + si]).length;
+    const isComplete = total > 0 && doneCount === total;
+    // complete exercises auto-minimize; once the user taps a header to override
+    // that, their choice sticks regardless of completion state
+    const isOpen = (key in groupOpenState) ? groupOpenState[key] : !isComplete;
+
+    const details = document.createElement("details");
+    details.className = "ex-details";
+    if (isOpen) details.open = true;
+
+    let bodyHtml = "";
+    if (g.note) bodyHtml += `<div class="ex-note">${escapeHtml(g.note)}</div>`;
     const anySplit = g.sets.some(s => parseSetStr(s).split);
     if (anySplit) {
-      html += `<div class="set-col-labels"><div class="set-num"></div><div class="chk"></div>
+      bodyHtml += `<div class="set-col-labels"><div class="set-num"></div><div class="chk"></div>
         <div class="set-fields"><div class="set-col-label">Weight</div><div class="set-col-label">Reps</div></div>
         <div class="set-remove"></div></div>`;
     }
     g.sets.forEach((s, si) => {
-      const key = gi + "-" + si;
-      const isOn = !!checked[key];
+      const setKey = gi + "-" + si;
+      const isOn = !!checked[setKey];
       const p = parseSetStr(s);
       const fieldsHtml = p.split
         ? `<input class="set-field ${isOn ? "is-done":""}" data-part="weight" value="${escapeHtml(p.weight)}" placeholder="wt" inputmode="text">
            <span class="set-x">×</span>
            <input class="set-field ${isOn ? "is-done":""}" data-part="reps" value="${escapeHtml(p.reps)}" placeholder="reps" inputmode="text">`
         : `<input class="set-field ${isOn ? "is-done":""}" data-part="weight" value="${escapeHtml(p.weight)}" placeholder="detail">`;
-      html += `<div class="set-row" data-gi="${gi}" data-si="${si}" data-split="${p.split}">
+      bodyHtml += `<div class="set-row" data-gi="${gi}" data-si="${si}" data-split="${p.split}">
         <div class="set-num">${si + 1}</div>
         <div class="chk chk-toggle ${isOn ? "on":""}">${isOn ? CHECK_SVG : ""}</div>
         <div class="set-fields">${fieldsHtml}</div>
         <button class="set-remove set-remove-btn" title="Remove set">${X_SVG}</button>
       </div>`;
     });
-    div.innerHTML = html;
-    const addBtn = document.createElement("button");
-    addBtn.className = "add-set-btn";
-    addBtn.dataset.gi = gi;
-    addBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Add set`;
-    div.appendChild(addBtn);
-    list.appendChild(div);
+    bodyHtml += `<button class="add-set-btn" data-gi="${gi}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Add set</button>`;
+
+    details.innerHTML = `
+      <summary class="ex-summary">
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        <div class="ex-summary-text">
+          <div class="ex-name">${escapeHtml(g.name)}</div>
+          ${total ? `<div class="ex-summary-sub">${doneCount}/${total} sets${isComplete ? " · done" : ""}</div>` : ""}
+        </div>
+        ${isComplete ? `<div class="ex-done-badge">${CHECK_SVG}</div>` : ""}
+      </summary>
+      <div class="ex-body">${bodyHtml}</div>`;
+    // listen on the summary click itself (not the details "toggle" event) — "toggle"
+    // also fires when we set details.open programmatically above, which would
+    // otherwise get misread as a user override on every single render
+    details.querySelector(".ex-summary").addEventListener("click", () => {
+      groupOpenState[key] = !details.open;
+    });
+    list.appendChild(details);
   });
 
   list.querySelectorAll(".chk-toggle").forEach(chk => {
@@ -884,6 +1016,16 @@ document.getElementById("finishBtn").addEventListener("click", async () => {
       if (logs.length) await sb.from("session_exercise_logs").insert(logs);
       showToast(msg);
       loadSessionsHistory();
+      if (sessionDate === todayStr()) {
+        // re-pin the view to today's (now-logged) session instead of jumping ahead,
+        // and let the celebration screen show if everything got checked off
+        await loadProgram();
+        await loadPlan();
+        renderWorkout();
+        updateWorkoutBar();
+        renderDayPicker();
+        if (document.getElementById("view-plan").classList.contains("active")) renderPlan();
+      }
     } catch (e) { showToast("Couldn't save — check connection", true); }
   } else {
     showToast(msg + " (demo — not saved)");
@@ -895,8 +1037,9 @@ function renderDayPicker() {
   const row = document.getElementById("dayPickerRow");
   if (!row) return;
   if (!DAY_OPTIONS.length) { row.innerHTML = ""; return; }
+  const suggestedTitle = WORKOUT.pinnedToday ? "Today's session" : "Next up in rotation";
   row.innerHTML = DAY_OPTIONS.map(d => `
-    <div class="day-pill ${d.id === selectedDayId ? "active" : ""} ${d.id === suggestedDayId && d.id !== selectedDayId ? "suggested" : ""} ${!d.active ? "inactive-day" : ""}" data-day-id="${d.id}" title="${d.id === suggestedDayId ? "Next up in rotation" : ""}">
+    <div class="day-pill ${d.id === selectedDayId ? "active" : ""} ${d.id === suggestedDayId && d.id !== selectedDayId ? "suggested" : ""} ${!d.active ? "inactive-day" : ""}" data-day-id="${d.id}" title="${d.id === suggestedDayId ? suggestedTitle : ""}">
       <div class="day-pill-code">${d.code}</div>
       <div class="day-pill-name">${escapeHtml((d.name || "").split(" ")[0])}</div>
     </div>`).join("");
@@ -1233,6 +1376,50 @@ function renderChart() {
   });
 }
 
+// ---------- best lifts (estimated 1RM) ----------
+async function loadBestLifts() {
+  if (!LIVE) { BEST_LIFTS = []; return; }
+  const { data: { user } } = await sb.auth.getUser();
+  const { data: sessions } = await sb.from("sessions").select("id").eq("user_id", user.id);
+  const sessionIds = (sessions || []).map(s => s.id);
+  if (!sessionIds.length) { BEST_LIFTS = []; return; }
+  const { data: logs } = await sb.from("session_exercise_logs").select("*").in("session_id", sessionIds);
+  const exIds = [...new Set((logs || []).map(l => l.exercise_id).filter(Boolean))];
+  let exNameById = {};
+  if (exIds.length) {
+    const { data: exRows } = await sb.from("exercises").select("id, name").in("id", exIds);
+    (exRows || []).forEach(e => { exNameById[e.id] = e.name; });
+  }
+  const best = {};
+  (logs || []).forEach(l => {
+    const name = exNameById[l.exercise_id];
+    if (!name || !l.actual) return;
+    l.actual.split(",").forEach(setStr => {
+      const p = parseSetStr(setStr.trim());
+      if (!p.split) return;
+      const w = parseFloat(p.weight), r = parseFloat(p.reps);
+      if (!isFinite(w) || !isFinite(r) || r <= 0 || w <= 0) return;
+      const oneRM = Math.round(w * (1 + r / 30)); // Epley formula — a light estimate, not a true max-out
+      if (!best[name] || oneRM > best[name].oneRM) best[name] = { name, weight: w, reps: r, oneRM };
+    });
+  });
+  BEST_LIFTS = Object.values(best).sort((a, b) => b.oneRM - a.oneRM);
+}
+
+function renderBestLifts() {
+  const list = document.getElementById("bestLiftsList");
+  if (!list) return;
+  if (!BEST_LIFTS.length) { list.innerHTML = '<div class="note-card" style="padding:10px 0 0;">Log a few weighted sets and your best lifts will show up here.</div>'; return; }
+  list.innerHTML = BEST_LIFTS.map(l => `
+    <div class="lift-row">
+      <div>
+        <div class="lift-name">${escapeHtml(l.name)}</div>
+        <div class="lift-detail">Best set: ${l.weight} × ${l.reps}</div>
+      </div>
+      <div class="lift-1rm">${l.oneRM}<span style="font-size:11px;font-weight:650;color:var(--text-muted);"> lb</span></div>
+    </div>`).join("");
+}
+
 // ---------- tabs ----------
 document.querySelectorAll(".tab-btn").forEach(btn => {
   btn.addEventListener("click", () => {
@@ -1240,7 +1427,7 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById("view-" + btn.dataset.tab).classList.add("active");
-    if (btn.dataset.tab === "progress") renderChart();
+    if (btn.dataset.tab === "progress") { renderChart(); renderBestLifts(); }
     if (btn.dataset.tab === "plan") renderPlan();
     if (btn.dataset.tab === "profile") renderProfile();
     if (btn.dataset.tab === "workout") { renderWorkout(); updateWorkoutBar(); renderDayPicker(); }
@@ -1354,9 +1541,16 @@ async function loadProgram(dayIdOverride, cycleOverride) {
     .select("*").eq("user_id", user.id).order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1);
   const lastSession = lastSessions && lastSessions[0];
 
+  // if today's session is already logged, keep showing it instead of jumping ahead
+  // to the next day in rotation — the next day only becomes "today" tomorrow.
+  const alreadyDoneToday = !dayIdOverride && !!lastSession && lastSession.date === todayStr();
+
   let autoDay, autoCycle;
   if (!lastSession) {
     autoDay = rotationDays[0]; autoCycle = 1;
+  } else if (alreadyDoneToday) {
+    autoDay = allDays.find(d => d.id === lastSession.workout_day_id) || rotationDays[0];
+    autoCycle = lastSession.cycle_number || 1;
   } else {
     const lastDay = rotationDays.find(d => d.id === lastSession.workout_day_id);
     if (!lastDay) { autoDay = rotationDays[0]; autoCycle = 1; }
@@ -1401,8 +1595,27 @@ async function loadProgram(dayIdOverride, cycleOverride) {
   currentCycleNumber = cycleForLookup;
   selectedDayId = nextDay.id;
   selectedCycle = cycleForLookup;
-  WORKOUT = { title: `${nextDay.code} · ${nextDay.name}`, cycle: `Cycle ${cycleForLookup} of ${maxCycle}`, groups, maxCycle };
   checked = {};
+
+  let showCelebrationForThis = false;
+  if (alreadyDoneToday) {
+    // pull back what was actually logged so the pinned/celebration view reflects reality
+    // (session_exercise_logs.completed is per-exercise, so only fully-completed exercises get checked)
+    const { data: logs } = await sb.from("session_exercise_logs").select("*").eq("session_id", lastSession.id);
+    (logs || []).forEach(log => {
+      const gi = groups.findIndex(gr => gr.id === log.exercise_id);
+      if (gi === -1) return;
+      if (log.actual) groups[gi].sets = log.actual.split(",").map(s => s.trim());
+      if (log.completed) groups[gi].sets.forEach((s, si) => { checked[gi + "-" + si] = true; });
+    });
+    const totalNow = groups.reduce((a, g) => a + g.sets.length, 0);
+    const doneNow = Object.values(checked).filter(Boolean).length;
+    showCelebrationForThis = totalNow > 0 && doneNow === totalNow;
+    celebrationDismissed = false;
+    groupOpenState = {}; // fresh collapse state for the (now current) actual sets
+  }
+
+  WORKOUT = { title: `${nextDay.code} · ${nextDay.name}`, cycle: `Cycle ${cycleForLookup} of ${maxCycle}`, groups, maxCycle, alreadyDoneToday: showCelebrationForThis, pinnedToday: alreadyDoneToday };
 }
 
 async function loadPlan() {
@@ -1516,7 +1729,7 @@ function updateNutritionEyebrow() {
 async function loadAll() {
   try {
     await loadProgram();
-    await Promise.all([loadNutritionForDate(nutritionDate), loadSessionsHistory(), computeStreak(), loadPlan(), loadFoodItems(), loadProfile()]);
+    await Promise.all([loadNutritionForDate(nutritionDate), loadSessionsHistory(), computeStreak(), loadPlan(), loadFoodItems(), loadProfile(), loadBestLifts()]);
     setBanner("", false);
   } catch (e) {
     setBanner(`<b>Couldn't load your data.</b> ${e.message || "Check your connection and try again."}`, true);
@@ -1529,6 +1742,7 @@ async function loadAll() {
   updateNutritionEyebrow();
   if (document.getElementById("view-plan").classList.contains("active")) renderPlan();
   if (document.getElementById("view-profile").classList.contains("active")) renderProfile();
+  if (document.getElementById("view-progress").classList.contains("active")) renderBestLifts();
 }
 
 const nutritionDateInput = document.getElementById("nutritionDateInput");
