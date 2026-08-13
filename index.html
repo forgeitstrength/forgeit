@@ -66,12 +66,19 @@
     background: var(--surface-0);
     color: var(--text-primary);
     -webkit-font-smoothing: antialiased;
-    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+    overscroll-behavior: none;
   }
-  .wrap { max-width: 480px; margin: 0 auto; padding: 0 18px; }
+  /* app-root is a fixed-height flex column: header (auto) + scroll-area (fills remaining space,
+     scrolls on its own) + tabbar (auto). This avoids the iOS standalone-mode bug where the
+     document body doesn't reliably re-measure its scrollable height after content is added
+     dynamically (e.g. after logging food) — a dedicated overflow:auto region always does. */
+  #app-root { flex-direction: column; height: 100dvh; overflow: hidden; }
+  .scroll-area { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 0 18px calc(28px + env(safe-area-inset-bottom)); }
 
   /* header */
   header.top {
+    flex: 0 0 auto;
     padding: calc(20px + env(safe-area-inset-top)) 18px 16px;
     display: flex; align-items: center; justify-content: space-between;
   }
@@ -135,19 +142,37 @@
   .ex-name { font-size: 14.5px; font-weight: 650; margin-bottom: 2px; }
   .ex-note { font-size: 12px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.45; }
   .set-row {
-    display: flex; align-items: center; gap: 11px;
+    display: flex; align-items: center; gap: 9px;
     padding: 10px 2px; border-top: 1px solid var(--gridline);
-    font-size: 14.5px; cursor: pointer; user-select: none;
+    font-size: 14.5px; user-select: none;
   }
   .ex-group:first-of-type .set-row:first-child { border-top: none; }
   .chk {
     width: 21px; height: 21px; border-radius: 7px; border: 1.5px solid var(--text-muted);
     flex-shrink: 0; display: flex; align-items: center; justify-content: center;
-    transition: background .15s, border-color .15s;
+    transition: background .15s, border-color .15s; cursor: pointer;
   }
   .chk.on { background: var(--status-good); border-color: var(--status-good); }
   .chk.on svg { width: 13px; height: 13px; }
   .set-label.done { color: var(--text-muted); text-decoration: line-through; text-decoration-color: var(--gridline); }
+  .set-label { flex: 1; cursor: text; padding: 4px 6px; margin: -4px -6px; border-radius: 7px; }
+  .set-label:active { background: var(--surface-2); }
+  .set-edit-input {
+    flex: 1; font: inherit; color: inherit; background: var(--surface-2); border: 1.5px solid var(--accent);
+    border-radius: 7px; padding: 4px 7px; font-size: 14.5px; font-family: inherit; min-width: 0;
+  }
+  .set-edit-input:focus { outline: none; }
+  .set-remove {
+    width: 24px; height: 24px; flex-shrink: 0; border-radius: 50%; border: none; background: none;
+    color: var(--text-muted); display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+  }
+  .set-remove svg { width: 14px; height: 14px; }
+  .add-set-btn {
+    display: flex; align-items: center; gap: 6px; padding: 10px 2px 2px; font-size: 13px; font-weight: 650;
+    color: var(--accent); cursor: pointer; border: none; background: none; font-family: inherit; width: 100%;
+  }
+  .add-set-btn svg { width: 15px; height: 15px; }
+  .edit-hint { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
   .btn {
     display: block; width: 100%; text-align: center;
@@ -178,6 +203,17 @@
     font-family: inherit;
   }
   .qa-input:focus { outline: none; border-color: var(--accent); }
+  .food-input-wrap { position: relative; }
+  .food-suggest {
+    position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 20;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
+    box-shadow: var(--card-shadow); max-height: 220px; overflow-y: auto;
+  }
+  .food-suggest-item { padding: 10px 13px; font-size: 13.5px; cursor: pointer; border-top: 1px solid var(--gridline); }
+  .food-suggest-item:first-child { border-top: none; }
+  .food-suggest-item:active { background: var(--surface-2); }
+  .food-suggest-name { font-weight: 650; }
+  .food-suggest-meta { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
   .chip-row { display: flex; gap: 7px; margin-top: 10px; flex-wrap: wrap; }
   .chip {
     padding: 7px 13px; border-radius: 999px; border: 1.5px solid var(--border);
@@ -244,9 +280,25 @@
 
   .note-card { font-size: 12.5px; color: var(--text-muted); line-height: 1.55; padding: 14px 4px 0; }
 
+  /* profile tab */
+  .profile-head { display: flex; align-items: center; gap: 14px; margin-bottom: 4px; }
+  .avatar-circle {
+    width: 54px; height: 54px; border-radius: 50%; background: var(--accent-soft); color: var(--accent);
+    display: flex; align-items: center; justify-content: center; font-size: 21px; font-weight: 700; flex-shrink: 0;
+  }
+  .profile-email { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; word-break: break-all; }
+  .field-label { font-size: 12px; font-weight: 650; color: var(--text-secondary); margin: 14px 0 6px; }
+  .field-label:first-of-type { margin-top: 2px; }
+  .field-row { display: flex; gap: 10px; }
+  .field-row .qa-input { margin-top: 0; flex: 1; min-width: 0; }
+  .goal-summary { display: flex; gap: 10px; margin-top: 4px; }
+  .goal-tile { flex: 1; background: var(--surface-2); border-radius: 12px; padding: 10px 12px; }
+  .goal-tile .stat-num { font-size: 17px; }
+  .goal-tile .stat-label { font-size: 10px; }
+
   /* nav */
   nav.tabbar {
-    position: fixed; left: 0; right: 0; bottom: 0;
+    flex: 0 0 auto;
     background: var(--surface-1); border-top: 1px solid var(--border);
     display: flex; padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
     backdrop-filter: blur(20px);
@@ -330,6 +382,7 @@
   </div>
 </header>
 
+<main class="scroll-area">
 <div class="wrap">
 
 <div class="preview-banner" id="statusBanner" style="display:none;"></div>
@@ -366,7 +419,10 @@
     </div>
     <div class="rings-row" id="ringsRow"></div>
 
-    <input class="qa-input" id="foodInput" placeholder="What did you eat?">
+    <div class="food-input-wrap">
+      <input class="qa-input" id="foodInput" placeholder="What did you eat?" autocomplete="off">
+      <div class="food-suggest" id="foodSuggest" style="display:none;"></div>
+    </div>
     <div class="chip-row">
       <div class="chip" data-chip="protein">Protein</div>
       <div class="chip" data-chip="carbs">Carbs</div>
@@ -406,7 +462,77 @@
   <div class="note-card">Trend lines, PRs, and nutrition adherence over time are next up for this tab.</div>
 </div>
 
+<!-- PROFILE VIEW -->
+<div class="view" id="view-profile">
+  <div class="hero-line">You</div>
+  <div class="hero-sub">Your details and goals — used to personalize targets across the app.</div>
+
+  <div class="card">
+    <div class="profile-head">
+      <div class="avatar-circle" id="profileAvatar">R</div>
+      <div>
+        <div class="card-title" id="profileNameDisplay" style="margin:0;">—</div>
+        <div class="profile-email" id="profileEmailDisplay">—</div>
+      </div>
+    </div>
+
+    <div class="field-label">Name</div>
+    <input class="qa-input" id="pfName" placeholder="Your name" style="margin-top:0;">
+
+    <div class="field-row">
+      <div>
+        <div class="field-label">Height (in)</div>
+        <input class="qa-input" id="pfHeight" type="number" inputmode="decimal" placeholder="e.g. 70">
+      </div>
+      <div>
+        <div class="field-label">Starting weight (lb)</div>
+        <input class="qa-input" id="pfStartWeight" type="number" inputmode="decimal" placeholder="e.g. 180">
+      </div>
+    </div>
+
+    <button class="btn ghost" id="saveProfileBtn">Save details</button>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-eyebrow">Targets</div>
+        <div class="card-title">Your goals</div>
+      </div>
+    </div>
+    <div class="card-sub">These drive the macro rings and progress tracking on the Today tab.</div>
+
+    <div class="field-label" style="margin-top:2px;">Daily macro targets (g)</div>
+    <div class="field-row">
+      <input class="qa-input" id="pfProtein" type="number" inputmode="decimal" placeholder="Protein">
+      <input class="qa-input" id="pfCarbs" type="number" inputmode="decimal" placeholder="Carbs">
+      <input class="qa-input" id="pfFat" type="number" inputmode="decimal" placeholder="Fat">
+    </div>
+
+    <div class="field-row">
+      <div>
+        <div class="field-label">Goal weight (lb)</div>
+        <input class="qa-input" id="pfGoalWeight" type="number" inputmode="decimal" placeholder="e.g. 168">
+      </div>
+      <div>
+        <div class="field-label">Target date</div>
+        <input class="qa-input" id="pfTargetDate" type="date">
+      </div>
+    </div>
+
+    <button class="btn" id="saveGoalsBtn">Save goals</button>
+
+    <div class="goal-summary" id="goalSummary" style="display:none;">
+      <div class="goal-tile"><div class="stat-num" id="gsWeight">—</div><div class="stat-label">Goal weight</div></div>
+      <div class="goal-tile"><div class="stat-num" id="gsDate">—</div><div class="stat-label">Target date</div></div>
+    </div>
+  </div>
+
+  <div class="note-card">Saving goals keeps a dated history, so your targets can evolve as your program does.</div>
 </div>
+
+</div>
+</main>
 
 <nav class="tabbar">
   <button class="tab-btn active" data-tab="today">
@@ -420,6 +546,10 @@
   <button class="tab-btn" data-tab="progress">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9M12 19V5M20 19v-7"/></svg>
     Progress
+  </button>
+  <button class="tab-btn" data-tab="profile">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.5-7 8-7s8 3 8 7"/></svg>
+    Profile
   </button>
 </nav>
 
@@ -496,6 +626,9 @@ let MACROS = JSON.parse(JSON.stringify(DEMO_MACROS));
 let food = DEMO_FOOD.slice();
 let SESSIONS = DEMO_SESSIONS.slice();
 let PLAN = DEMO_PLAN.slice();
+let PROFILE = {};
+let FOOD_ITEMS = [];
+let selectedFoodItem = null;
 let streakDays = 1;
 let currentWorkoutDayId = null;
 let currentCycleNumber = 1;
@@ -505,6 +638,10 @@ let wasComplete = false;
 
 function totalSets() { return WORKOUT.groups.reduce((a,g) => a + g.sets.length, 0); }
 function doneSets() { return Object.values(checked).filter(Boolean).length; }
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
 
 function renderWorkout() {
   document.getElementById("workoutTitle").textContent = WORKOUT.title;
@@ -519,18 +656,82 @@ function renderWorkout() {
     g.sets.forEach((s, si) => {
       const key = gi + "-" + si;
       const isOn = !!checked[key];
-      html += `<div class="set-row" data-key="${key}">
-        <div class="chk ${isOn ? "on":""}">${isOn ? '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg>' : ""}</div>
-        <div class="set-label ${isOn ? "done":""}">${s}</div>
+      html += `<div class="set-row" data-gi="${gi}" data-si="${si}">
+        <div class="chk chk-toggle ${isOn ? "on":""}">${isOn ? '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg>' : ""}</div>
+        <div class="set-label set-edit ${isOn ? "done":""}">${escapeHtml(s)}</div>
+        <button class="set-remove set-remove-btn" title="Remove set"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
       </div>`;
     });
     div.innerHTML = html;
+    const addBtn = document.createElement("button");
+    addBtn.className = "add-set-btn";
+    addBtn.dataset.gi = gi;
+    addBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg> Add set`;
+    div.appendChild(addBtn);
     list.appendChild(div);
   });
-  list.querySelectorAll(".set-row").forEach(row => {
-    row.addEventListener("click", () => {
-      const key = row.dataset.key;
+
+  list.querySelectorAll(".chk-toggle").forEach(chk => {
+    chk.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const row = chk.closest(".set-row");
+      const key = row.dataset.gi + "-" + row.dataset.si;
       checked[key] = !checked[key];
+      renderWorkout();
+      updateWorkoutBar();
+    });
+  });
+
+  list.querySelectorAll(".set-edit").forEach(label => {
+    label.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const row = label.closest(".set-row");
+      const gi = +row.dataset.gi, si = +row.dataset.si;
+      const input = document.createElement("input");
+      input.className = "set-edit-input";
+      input.value = WORKOUT.groups[gi].sets[si];
+      label.replaceWith(input);
+      input.focus();
+      input.select();
+      const commit = () => {
+        const val = input.value.trim();
+        WORKOUT.groups[gi].sets[si] = val || WORKOUT.groups[gi].sets[si];
+        renderWorkout();
+      };
+      input.addEventListener("blur", commit);
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") { ev.preventDefault(); input.blur(); }
+        if (ev.key === "Escape") { ev.preventDefault(); renderWorkout(); }
+      });
+    });
+  });
+
+  list.querySelectorAll(".set-remove-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const row = btn.closest(".set-row");
+      const gi = +row.dataset.gi, si = +row.dataset.si;
+      if (WORKOUT.groups[gi].sets.length <= 1) { showToast("Every exercise needs at least one set"); return; }
+      WORKOUT.groups[gi].sets.splice(si, 1);
+      // re-key checked map for this group since indices shift
+      const rekeyed = {};
+      Object.keys(checked).forEach(k => {
+        const [kgi, ksi] = k.split("-").map(Number);
+        if (kgi !== gi) { rekeyed[k] = checked[k]; return; }
+        if (ksi < si) rekeyed[k] = checked[k];
+        else if (ksi > si) rekeyed[(kgi)+"-"+(ksi-1)] = checked[k];
+      });
+      checked = rekeyed;
+      renderWorkout();
+      updateWorkoutBar();
+    });
+  });
+
+  list.querySelectorAll(".add-set-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const gi = +btn.dataset.gi;
+      const sets = WORKOUT.groups[gi].sets;
+      sets.push(sets.length ? sets[sets.length - 1] : "");
       renderWorkout();
       updateWorkoutBar();
     });
@@ -575,10 +776,19 @@ document.getElementById("finishBtn").addEventListener("click", async () => {
   if (LIVE) {
     try {
       const { data: { user } } = await sb.auth.getUser();
-      await sb.from("sessions").insert({
+      const { data: sessionRow, error: sErr } = await sb.from("sessions").insert({
         user_id: user.id, workout_day_id: currentWorkoutDayId, cycle_number: currentCycleNumber,
         date: todayStr(), sets_completed: done, sets_total: total,
-      });
+      }).select().single();
+      if (sErr) throw sErr;
+      // persist what was actually performed (may differ from the plan if edited) per exercise
+      const logs = WORKOUT.groups.map((g, gi) => ({ g, gi })).filter(x => x.g.id).map(({ g, gi }) => ({
+        session_id: sessionRow.id,
+        exercise_id: g.id,
+        actual: g.sets.join(", "),
+        completed: g.sets.every((s, si) => checked[gi + "-" + si]),
+      }));
+      if (logs.length) await sb.from("session_exercise_logs").insert(logs);
       showToast("Workout logged for today");
       loadSessionsHistory();
     } catch (e) { showToast("Couldn't save — check connection", true); }
@@ -638,13 +848,84 @@ function renderFood() {
   });
 }
 
+function setChips(tags, shake) {
+  activeTags = new Set(tags);
+  if (shake) activeTags.add("shake");
+  document.querySelectorAll(".chip").forEach(c => {
+    const tag = c.dataset.chip;
+    c.className = "chip" + (activeTags.has(tag) ? " on-" + tag : "");
+  });
+}
+
 document.querySelectorAll(".chip").forEach(chip => {
   chip.addEventListener("click", () => {
     const tag = chip.dataset.chip;
     if (activeTags.has(tag)) { activeTags.delete(tag); chip.classList.remove("on-"+tag); }
     else { activeTags.add(tag); chip.classList.add("on-"+tag); }
+    selectedFoodItem = null; // manual chip edit breaks the auto-fill link
   });
 });
+
+// ---------- food autocomplete (most-used foods) ----------
+function renderFoodSuggest(matches) {
+  const box = document.getElementById("foodSuggest");
+  if (!matches.length) { box.style.display = "none"; box.innerHTML = ""; return; }
+  box.innerHTML = matches.map((f, i) => `
+    <div class="food-suggest-item" data-idx="${i}">
+      <div class="food-suggest-name">${escapeHtml(f.name)}</div>
+      <div class="food-suggest-meta">P ${f.protein_g||0}g · C ${f.carbs_g||0}g · F ${f.fat_g||0}g${f.had_shake ? " · 🥤" : ""}</div>
+    </div>`).join("");
+  box.style.display = "block";
+  box.querySelectorAll(".food-suggest-item").forEach(el => {
+    el.addEventListener("mousedown", (e) => e.preventDefault()); // keep focus so blur doesn't hide before click registers
+    el.addEventListener("click", () => {
+      const f = matches[+el.dataset.idx];
+      document.getElementById("foodInput").value = f.name;
+      selectedFoodItem = f;
+      setChips((f.covers || []).map(c => c.toLowerCase()), !!f.had_shake);
+      box.style.display = "none";
+    });
+  });
+}
+
+const foodInputEl = document.getElementById("foodInput");
+foodInputEl.addEventListener("input", () => {
+  selectedFoodItem = null;
+  const q = foodInputEl.value.trim().toLowerCase();
+  if (!q) { renderFoodSuggest([]); return; }
+  const matches = FOOD_ITEMS.filter(f => f.name.toLowerCase().includes(q)).slice(0, 5);
+  renderFoodSuggest(matches);
+});
+foodInputEl.addEventListener("blur", () => setTimeout(() => renderFoodSuggest([]), 120));
+foodInputEl.addEventListener("focus", () => { if (foodInputEl.value.trim()) foodInputEl.dispatchEvent(new Event("input")); });
+
+async function loadFoodItems() {
+  if (!LIVE) return;
+  const { data: { user } } = await sb.auth.getUser();
+  const { data } = await sb.from("food_items").select("*").eq("user_id", user.id)
+    .order("use_count", { ascending: false }).order("last_used_at", { ascending: false }).limit(100);
+  FOOD_ITEMS = data || [];
+}
+
+async function recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd) {
+  if (!LIVE) return;
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    const existing = FOOD_ITEMS.find(f => f.name.toLowerCase() === name.toLowerCase());
+    if (existing) {
+      await sb.from("food_items").update({
+        use_count: (existing.use_count || 1) + 1, last_used_at: new Date().toISOString(),
+        protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd, covers, had_shake: shake,
+      }).eq("id", existing.id);
+    } else {
+      await sb.from("food_items").insert({
+        user_id: user.id, name, protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd,
+        covers, had_shake: shake, use_count: 1, last_used_at: new Date().toISOString(),
+      });
+    }
+    loadFoodItems();
+  } catch (e) { /* usage stats are best-effort, never block the log */ }
+}
 
 document.getElementById("logFoodBtn").addEventListener("click", async () => {
   const input = document.getElementById("foodInput");
@@ -652,9 +933,15 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
   if (!name) { input.focus(); return; }
   const tags = ["protein","carbs","fat"].filter(t => activeTags.has(t));
   const shake = activeTags.has("shake");
-  const proteinAdd = tags.includes("protein") ? 15 : 0;
-  const carbsAdd = tags.includes("carbs") ? 20 : 0;
-  const fatAdd = tags.includes("fat") ? 6 : 0;
+
+  // known food picked from suggestions (or exact name match) -> use its real macros;
+  // otherwise fall back to a simple per-tag estimate.
+  const known = selectedFoodItem && selectedFoodItem.name.toLowerCase() === name.toLowerCase()
+    ? selectedFoodItem
+    : FOOD_ITEMS.find(f => f.name.toLowerCase() === name.toLowerCase());
+  const proteinAdd = known ? Number(known.protein_g) || 0 : (tags.includes("protein") ? 15 : 0);
+  const carbsAdd   = known ? Number(known.carbs_g) || 0   : (tags.includes("carbs") ? 20 : 0);
+  const fatAdd     = known ? Number(known.fat_g) || 0     : (tags.includes("fat") ? 6 : 0);
 
   food.push({ name, tags, shake });
   MACROS.protein.current += proteinAdd;
@@ -664,17 +951,20 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
   renderFood();
   input.value = "";
   activeTags.clear();
+  selectedFoodItem = null;
   document.querySelectorAll(".chip").forEach(c => c.className = "chip");
+  renderFoodSuggest([]);
 
+  const covers = tags.map(t => t[0].toUpperCase() + t.slice(1));
   if (LIVE) {
     try {
       const { data: { user } } = await sb.auth.getUser();
-      const covers = tags.map(t => t[0].toUpperCase() + t.slice(1));
       await sb.from("nutrition_log").insert({
         user_id: user.id, name, date: todayStr(), covers, had_shake: shake,
         protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd,
       });
-      showToast("Logged");
+      showToast(known ? "Logged — used your saved macros" : "Logged");
+      recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd);
     } catch (e) { showToast("Couldn't save — check connection", true); }
   } else {
     showToast("Logged (demo — not saved)");
@@ -738,7 +1028,85 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     document.getElementById("view-" + btn.dataset.tab).classList.add("active");
     if (btn.dataset.tab === "progress") renderChart();
     if (btn.dataset.tab === "plan") renderPlan();
+    if (btn.dataset.tab === "profile") renderProfile();
   });
+});
+
+// ---------- profile tab ----------
+function renderProfile() {
+  const name = PROFILE.full_name || "";
+  document.getElementById("profileNameDisplay").textContent = name || "Your profile";
+  document.getElementById("profileAvatar").textContent = (name || "?").trim().charAt(0).toUpperCase() || "?";
+  document.getElementById("profileEmailDisplay").textContent = PROFILE.email || "";
+  document.getElementById("pfName").value = name;
+  document.getElementById("pfHeight").value = PROFILE.height_in || "";
+  document.getElementById("pfStartWeight").value = PROFILE.starting_weight_lb || "";
+
+  document.getElementById("pfProtein").value = MACROS.protein.target || "";
+  document.getElementById("pfCarbs").value = MACROS.carbs.target || "";
+  document.getElementById("pfFat").value = MACROS.fat.target || "";
+  document.getElementById("pfGoalWeight").value = PROFILE.weight_target_lb || "";
+  document.getElementById("pfTargetDate").value = PROFILE.target_date || "";
+
+  const gs = document.getElementById("goalSummary");
+  if (PROFILE.weight_target_lb || PROFILE.target_date) {
+    gs.style.display = "flex";
+    document.getElementById("gsWeight").textContent = PROFILE.weight_target_lb ? PROFILE.weight_target_lb + " lb" : "—";
+    document.getElementById("gsDate").textContent = PROFILE.target_date
+      ? new Date(PROFILE.target_date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+      : "—";
+  } else {
+    gs.style.display = "none";
+  }
+}
+
+async function loadProfile() {
+  const { data: { user } } = await sb.auth.getUser();
+  const [{ data: profRows }, { data: targetRows }] = await Promise.all([
+    sb.from("profiles").select("*").eq("user_id", user.id).limit(1),
+    sb.from("daily_targets").select("*").eq("user_id", user.id).order("effective_date", { ascending: false }).limit(1),
+  ]);
+  const prof = (profRows && profRows[0]) || {};
+  const target = (targetRows && targetRows[0]) || {};
+  PROFILE = {
+    full_name: prof.full_name || "", height_in: prof.height_in || "", starting_weight_lb: prof.starting_weight_lb || "",
+    email: user.email || "",
+    weight_target_lb: target.weight_target_lb || "", target_date: target.target_date || "",
+  };
+}
+
+document.getElementById("saveProfileBtn").addEventListener("click", async () => {
+  const full_name = document.getElementById("pfName").value.trim();
+  const height_in = document.getElementById("pfHeight").value ? Number(document.getElementById("pfHeight").value) : null;
+  const starting_weight_lb = document.getElementById("pfStartWeight").value ? Number(document.getElementById("pfStartWeight").value) : null;
+  if (!LIVE) { showToast("Saved (demo — not synced)"); return; }
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    await sb.from("profiles").upsert({ user_id: user.id, full_name, height_in, starting_weight_lb }, { onConflict: "user_id" });
+    PROFILE.full_name = full_name; PROFILE.height_in = height_in; PROFILE.starting_weight_lb = starting_weight_lb;
+    renderProfile();
+    showToast("Details saved");
+  } catch (e) { showToast("Couldn't save — check connection", true); }
+});
+
+document.getElementById("saveGoalsBtn").addEventListener("click", async () => {
+  const protein_g = Number(document.getElementById("pfProtein").value) || 0;
+  const carbs_g = Number(document.getElementById("pfCarbs").value) || 0;
+  const fat_g = Number(document.getElementById("pfFat").value) || 0;
+  const weight_target_lb = document.getElementById("pfGoalWeight").value ? Number(document.getElementById("pfGoalWeight").value) : null;
+  const target_date = document.getElementById("pfTargetDate").value || null;
+  if (!LIVE) { showToast("Saved (demo — not synced)"); return; }
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    await sb.from("daily_targets").insert({
+      user_id: user.id, effective_date: todayStr(), protein_g, carbs_g, fat_g, weight_target_lb, target_date,
+    });
+    PROFILE.weight_target_lb = weight_target_lb; PROFILE.target_date = target_date;
+    await loadNutritionToday();
+    renderRings();
+    renderProfile();
+    showToast("Goals saved");
+  } catch (e) { showToast("Couldn't save — check connection", true); }
 });
 
 // ---------- toast ----------
@@ -790,7 +1158,7 @@ async function loadProgram() {
 
   const groups = exercises.map(ex => {
     const cyc = (ex.cycles || []).find(c => c.cycle === cycleForLookup) || (ex.cycles || [])[0] || { prescription: "" };
-    return { name: ex.name, note: "", sets: cyc.prescription ? cyc.prescription.split(",").map(s => s.trim()) : [] };
+    return { id: ex.id, name: ex.name, note: "", sets: cyc.prescription ? cyc.prescription.split(",").map(s => s.trim()) : [] };
   });
 
   currentWorkoutDayId = nextDay.id;
@@ -900,7 +1268,7 @@ function setBanner(msg, show) {
 async function loadAll() {
   try {
     await loadProgram();
-    await Promise.all([loadNutritionToday(), loadSessionsHistory(), computeStreak(), loadPlan()]);
+    await Promise.all([loadNutritionToday(), loadSessionsHistory(), computeStreak(), loadPlan(), loadFoodItems(), loadProfile()]);
     setBanner("", false);
   } catch (e) {
     setBanner(`<b>Couldn't load your data.</b> ${e.message || "Check your connection and try again."}`, true);
@@ -910,6 +1278,7 @@ async function loadAll() {
   renderRings();
   renderFood();
   if (document.getElementById("view-plan").classList.contains("active")) renderPlan();
+  if (document.getElementById("view-profile").classList.contains("active")) renderProfile();
 }
 
 // ============================================================
@@ -919,7 +1288,7 @@ let authMode = "login"; // or "signup"
 
 function showApp() {
   document.getElementById("auth-root").style.display = "none";
-  document.getElementById("app-root").style.display = "block";
+  document.getElementById("app-root").style.display = "flex";
 }
 function showAuth() {
   document.getElementById("app-root").style.display = "none";
