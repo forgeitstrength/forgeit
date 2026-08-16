@@ -72,7 +72,7 @@
      scrolls on its own) + tabbar (auto). This avoids the iOS standalone-mode bug where the
      document body doesn't reliably re-measure its scrollable height after content is added
      dynamically (e.g. after logging food) — a dedicated overflow:auto region always does. */
-  #app-root { flex-direction: column; height: 100dvh; overflow: hidden; }
+  #app-root, #onboarding-root { flex-direction: column; height: 100dvh; overflow: hidden; }
   .scroll-area { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .wrap { max-width: 480px; margin: 0 auto; padding: 0 18px calc(28px + env(safe-area-inset-bottom)); }
 
@@ -1146,30 +1146,26 @@ document.getElementById("finishBtn").addEventListener("click", async () => {
   const total = totalSets(), done = doneSets();
   const dateLabel = sessionDate === todayStr() ? "today" : sessionDate;
   const msg = done === total ? `Workout logged for ${dateLabel}` : `Progress saved (${done}/${total}) for ${dateLabel}`;
+
+  const finishBtnEl = document.getElementById("finishBtn");
+  if (finishBtnEl.disabled) return; // guards against a double-tap firing two overlapping saves
+  finishBtnEl.disabled = true;
+  const prevFinishLabel = finishBtnEl.textContent;
+  finishBtnEl.textContent = "Saving…";
+
   if (LIVE) {
     try {
       const { data: { user } } = await sb.auth.getUser();
-      // if this exact day/cycle/date was already saved today (e.g. you dismissed the
-      // celebration to add a couple more sets), update that session instead of
-      // inserting a duplicate row
-      const { data: existingRows } = await sb.from("sessions").select("*")
-        .eq("user_id", user.id).eq("workout_day_id", currentWorkoutDayId)
-        .eq("cycle_number", currentCycleNumber).eq("date", sessionDate).limit(1);
-      const existing = existingRows && existingRows[0];
-
-      let sessionRow;
-      if (existing) {
-        await sb.from("sessions").update({ sets_completed: done, sets_total: total }).eq("id", existing.id);
-        await sb.from("session_exercise_logs").delete().eq("session_id", existing.id);
-        sessionRow = existing;
-      } else {
-        const { data: inserted, error: sErr } = await sb.from("sessions").insert({
+      // one row per (user, day, cycle, date) — upsert so a re-save (or an accidental
+      // double-tap) updates that same row instead of creating a duplicate session
+      const { data: sessionRow, error: sErr } = await sb.from("sessions")
+        .upsert({
           user_id: user.id, workout_day_id: currentWorkoutDayId, cycle_number: currentCycleNumber,
           date: sessionDate, sets_completed: done, sets_total: total,
-        }).select().single();
-        if (sErr) throw sErr;
-        sessionRow = inserted;
-      }
+        }, { onConflict: "user_id,workout_day_id,cycle_number,date" })
+        .select().single();
+      if (sErr) throw sErr;
+      await sb.from("session_exercise_logs").delete().eq("session_id", sessionRow.id);
       // persist what was actually performed (may differ from the plan if edited) per exercise
       const logs = WORKOUT.groups.map((g, gi) => ({ g, gi })).filter(x => x.g.id).map(({ g, gi }) => ({
         session_id: sessionRow.id,
@@ -1194,6 +1190,8 @@ document.getElementById("finishBtn").addEventListener("click", async () => {
   } else {
     showToast(msg + " (demo — not saved)");
   }
+  finishBtnEl.disabled = false;
+  if (finishBtnEl.textContent === "Saving…") finishBtnEl.textContent = prevFinishLabel;
 });
 
 // ---------- day / cycle picker ----------
