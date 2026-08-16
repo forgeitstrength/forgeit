@@ -382,6 +382,16 @@
   .goal-tile .stat-num { font-size: 17px; }
   .goal-tile .stat-label { font-size: 10px; }
 
+  /* onboarding / program builder */
+  .ob-day-card { background: var(--surface-2); box-shadow: none; }
+  .ob-ex-row { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--gridline); }
+  .ob-ex-row:first-child { margin-top: 8px; padding-top: 0; border-top: none; }
+  .ob-ex-fields { display: flex; gap: 8px; margin-top: 6px; }
+  .ob-ex-fields .qa-input { margin-top: 0; flex: 1; min-width: 0; }
+  .ob-ex-row .set-remove { margin-top: 6px; color: var(--text-muted); }
+  .btn.danger-ghost { color: var(--status-bad); border-color: var(--status-bad); }
+  select.qa-input { -webkit-appearance: none; appearance: none; }
+
   /* nav */
   nav.tabbar {
     flex: 0 0 auto;
@@ -447,6 +457,69 @@
       <div class="auth-toggle" id="authToggle">New here? <a id="authToggleLink">Create an account</a></div>
     </div>
   </div>
+</div>
+
+<!-- ONBOARDING ROOT -->
+<div id="onboarding-root" style="display:none;">
+
+<header class="top">
+  <div class="brand">
+    <div class="mark"><svg viewBox="0 0 100 100"><path d="M28 50h44M34 38v24M66 38v24M22 44v12M78 44v12" stroke="white" stroke-width="10" stroke-linecap="round" fill="none"/></svg></div>
+    <div>
+      <h1>Forge</h1>
+      <div class="date">Set up your program</div>
+    </div>
+  </div>
+  <button class="icon-btn" id="onboardingSignOutBtn" title="Sign out">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+  </button>
+</header>
+
+<main class="scroll-area">
+<div class="wrap">
+
+  <div class="hero-line">Welcome to Forge</div>
+  <div class="hero-sub">One-time setup — build your workout split and nutrition targets. Everything here can be changed later from the Profile tab.</div>
+
+  <div class="card">
+    <div class="card-eyebrow">Your details</div>
+    <div class="card-title" style="margin-bottom:10px;">About you</div>
+    <div class="field-label" style="margin-top:0;">Name</div>
+    <input class="qa-input" id="obName" placeholder="Your name" style="margin-top:0;">
+    <div class="field-row">
+      <div><div class="field-label">Height (in)</div><input class="qa-input" id="obHeight" type="number" inputmode="decimal" placeholder="e.g. 70"></div>
+      <div><div class="field-label">Starting weight (lb)</div><input class="qa-input" id="obStartWeight" type="number" inputmode="decimal" placeholder="e.g. 180"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-eyebrow">Nutrition</div>
+    <div class="card-title" style="margin-bottom:10px;">Daily targets</div>
+    <div class="field-row">
+      <input class="qa-input" id="obProtein" type="number" inputmode="decimal" placeholder="Protein g">
+      <input class="qa-input" id="obCarbs" type="number" inputmode="decimal" placeholder="Carbs g">
+      <input class="qa-input" id="obFat" type="number" inputmode="decimal" placeholder="Fat g">
+    </div>
+    <div class="field-row">
+      <div><div class="field-label">Goal weight (lb)</div><input class="qa-input" id="obGoalWeight" type="number" inputmode="decimal" placeholder="optional"></div>
+      <div><div class="field-label">Target date</div><input class="qa-input" id="obTargetDate" type="date"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-eyebrow">Workout split</div>
+    <div class="card-title" style="margin-bottom:4px;">Your days</div>
+    <div class="card-sub">A short code (D, E, P…), a name, and its exercises with a starting weight × reps for each set.</div>
+    <div id="obDaysList"></div>
+    <button class="btn ghost" id="obAddDayBtn" type="button" style="margin-top:6px;">+ Add a workout day</button>
+  </div>
+
+  <div class="auth-error" id="obError"></div>
+  <button class="btn" id="obFinishBtn" style="margin-top:4px;">Finish setup</button>
+  <div class="note-card">Nothing here is permanent — days, exercises, and targets can all be edited later.</div>
+
+</div>
+</main>
 </div>
 
 <!-- APP ROOT -->
@@ -655,6 +728,18 @@
   </div>
 
   <div class="note-card">Saving goals keeps a dated history, so your targets can evolve as your program does.</div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-eyebrow">Program</div>
+        <div class="card-title">Workout days</div>
+      </div>
+    </div>
+    <div class="card-sub">Add a new training day to your rotation. (Editing or removing an existing day isn't supported here yet.)</div>
+    <div id="addDayList"></div>
+    <button class="btn ghost" id="showAddDayBtn" type="button">+ Add a workout day</button>
+  </div>
 </div>
 
 </div>
@@ -697,6 +782,35 @@ const CONFIG = {
 };
 const LIVE = !!(CONFIG.SUPABASE_URL && !CONFIG.SUPABASE_URL.startsWith("YOUR_"));
 const sb = LIVE ? supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY) : null;
+
+// Look up real macros for free-text food descriptions via a Supabase Edge Function
+// (nutrition-lookup) that proxies CalorieNinjas' natural-language API server-side —
+// the API key lives in the function's secrets, never in this file, and the function
+// caps lookups per user per day so one account can't run up everyone's shared quota.
+// Returns null on any failure (offline, not signed in, daily cap hit, nothing
+// recognized) so callers can silently fall back to the old rough tag-based guess.
+async function estimateMacrosFromAPI(text) {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) return null;
+    const res = await fetch(CONFIG.SUPABASE_URL + "/functions/v1/nutrition-lookup", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + session.access_token,
+        "apikey": CONFIG.SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ query: text }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      if (res.status === 429 && data && data.error) showToast(data.error, true);
+      return null;
+    }
+    if (!data || !data.matchedCount) return null;
+    return { protein_g: data.protein_g, carbs_g: data.carbs_g, fat_g: data.fat_g, matchedCount: data.matchedCount };
+  } catch (e) { return null; }
+}
 
 document.getElementById("todayDate").textContent = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 
@@ -1349,13 +1463,34 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
   const shake = activeTags.has("shake");
 
   // known food picked from suggestions (or exact name match) -> use its real macros;
-  // otherwise fall back to a simple per-tag estimate.
+  // otherwise ask the nutrition API to parse the free-text description; otherwise fall
+  // back to a simple per-tag estimate.
   const known = selectedFoodItem && selectedFoodItem.name.toLowerCase() === name.toLowerCase()
     ? selectedFoodItem
     : FOOD_ITEMS.find(f => f.name.toLowerCase() === name.toLowerCase());
-  const proteinAdd = known ? Number(known.protein_g) || 0 : (tags.includes("protein") ? 15 : 0);
-  const carbsAdd   = known ? Number(known.carbs_g) || 0   : (tags.includes("carbs") ? 20 : 0);
-  const fatAdd     = known ? Number(known.fat_g) || 0     : (tags.includes("fat") ? 6 : 0);
+
+  let proteinAdd, carbsAdd, fatAdd, macroSource;
+  if (known) {
+    proteinAdd = Number(known.protein_g) || 0;
+    carbsAdd = Number(known.carbs_g) || 0;
+    fatAdd = Number(known.fat_g) || 0;
+    macroSource = "saved";
+  } else {
+    const logBtn = document.getElementById("logFoodBtn");
+    const prevLabel = logBtn.textContent;
+    logBtn.disabled = true; logBtn.textContent = "Estimating…";
+    const est = await estimateMacrosFromAPI(name);
+    logBtn.disabled = false; logBtn.textContent = prevLabel;
+    if (est) {
+      proteinAdd = est.protein_g; carbsAdd = est.carbs_g; fatAdd = est.fat_g;
+      macroSource = "api";
+    } else {
+      proteinAdd = tags.includes("protein") ? 15 : 0;
+      carbsAdd = tags.includes("carbs") ? 20 : 0;
+      fatAdd = tags.includes("fat") ? 6 : 0;
+      macroSource = "default";
+    }
+  }
 
   const newItem = { id: null, name, tags, shake, protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd };
   food.push(newItem);
@@ -1381,7 +1516,11 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
       if (error) throw error;
       newItem.id = inserted.id;
       renderFood();
-      showToast(known ? "Logged — used your saved macros" : (nutritionDate === todayStr() ? "Logged" : "Logged for " + nutritionDate));
+      const dateSuffix = nutritionDate === todayStr() ? "" : " for " + nutritionDate;
+      const toastMsg = macroSource === "saved" ? "Logged — used your saved macros" + dateSuffix
+        : macroSource === "api" ? `Logged${dateSuffix} — estimated ${proteinAdd}p/${carbsAdd}c/${fatAdd}f (tap to edit if off)`
+        : "Logged" + dateSuffix + " — rough guess, tap to edit macros";
+      showToast(toastMsg);
       recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd);
     } catch (e) { showToast("Couldn't save — check connection", true); }
   } else {
@@ -1830,16 +1969,206 @@ nutritionDateInput.addEventListener("change", async () => {
 });
 
 // ============================================================
+// ONBOARDING / PROGRAM BUILDER
+// (shared by the first-run onboarding screen and the Profile tab's
+// "add a workout day" card — both build the same workout_days/exercises rows)
+// ============================================================
+function obExerciseRowHtml() {
+  return `
+    <div class="ob-ex-row">
+      <input class="qa-input" data-ob="ex-name" placeholder="Exercise name" style="margin-top:0;">
+      <div class="ob-ex-fields">
+        <select class="qa-input" data-ob="ex-section">
+          <option value="WARM-UP">Warm-up</option>
+          <option value="MAIN" selected>Main</option>
+          <option value="FINISHER">Finisher</option>
+        </select>
+        <input class="qa-input" data-ob="ex-prescription" placeholder="40x12, 40x12, 35x15">
+      </div>
+      <button class="set-remove" data-action="ob-remove-ex" type="button" title="Remove exercise">${X_SVG}</button>
+    </div>`;
+}
+function obDayCardHtml() {
+  return `
+    <div class="card ob-day-card">
+      <div class="field-row">
+        <div style="flex:0 0 76px;">
+          <div class="field-label" style="margin-top:0;">Code</div>
+          <input class="qa-input" data-ob="code" maxlength="4" placeholder="D" style="margin-top:0;">
+        </div>
+        <div>
+          <div class="field-label" style="margin-top:0;">Day name</div>
+          <input class="qa-input" data-ob="name" placeholder="Upper Hypertrophy" style="margin-top:0;">
+        </div>
+      </div>
+      <div class="field-label">Exercises</div>
+      <div data-ob="exercises">${obExerciseRowHtml()}</div>
+      <button class="btn ghost" data-action="ob-add-ex" type="button" style="margin-top:10px;">+ Add exercise</button>
+      <button class="btn ghost danger-ghost" data-action="ob-remove-day" type="button" style="margin-top:8px;">Remove this day</button>
+    </div>`;
+}
+// delegated add/remove handling — shared across both builders since both use the same markup/data-action names
+function wireObDayListEvents(listEl) {
+  listEl.addEventListener("click", (e) => {
+    const addExBtn = e.target.closest('[data-action="ob-add-ex"]');
+    if (addExBtn) {
+      addExBtn.closest(".ob-day-card").querySelector('[data-ob="exercises"]').insertAdjacentHTML("beforeend", obExerciseRowHtml());
+      return;
+    }
+    const rmExBtn = e.target.closest('[data-action="ob-remove-ex"]');
+    if (rmExBtn) {
+      const exWrap = rmExBtn.closest('[data-ob="exercises"]');
+      if (exWrap.children.length > 1) rmExBtn.closest(".ob-ex-row").remove();
+      return;
+    }
+    const rmDayBtn = e.target.closest('[data-action="ob-remove-day"]');
+    if (rmDayBtn) {
+      if (listEl.children.length > 1) rmDayBtn.closest(".ob-day-card").remove();
+      return;
+    }
+  });
+}
+// reads one .ob-day-card element into {code, name, exercises:[{name,section,prescription}]}
+function readObDayCard(card) {
+  const code = card.querySelector('[data-ob="code"]').value.trim();
+  const name = card.querySelector('[data-ob="name"]').value.trim();
+  const exercises = [...card.querySelectorAll(".ob-ex-row")].map(row => ({
+    name: row.querySelector('[data-ob="ex-name"]').value.trim(),
+    section: row.querySelector('[data-ob="ex-section"]').value,
+    prescription: row.querySelector('[data-ob="ex-prescription"]').value.trim(),
+  })).filter(ex => ex.name);
+  return { code, name, exercises };
+}
+// inserts one workout day + its exercises; returns the created day row
+async function insertWorkoutDay(day, sequenceOrder) {
+  const { data: { user } } = await sb.auth.getUser();
+  const { data: dayRow, error: dayErr } = await sb.from("workout_days")
+    .insert({ user_id: user.id, code: day.code, name: day.name, sequence_order: sequenceOrder, active: true })
+    .select().single();
+  if (dayErr) throw dayErr;
+  const exRows = day.exercises.map((ex, idx) => ({
+    workout_day_id: dayRow.id, section: ex.section, name: ex.name, order_index: idx,
+    cycles: ex.prescription ? [{ cycle: 1, prescription: ex.prescription }] : [],
+  }));
+  if (exRows.length) {
+    const { error: exErr } = await sb.from("exercises").insert(exRows);
+    if (exErr) throw exErr;
+  }
+  return dayRow;
+}
+
+function showOnboarding() {
+  document.getElementById("auth-root").style.display = "none";
+  document.getElementById("app-root").style.display = "none";
+  document.getElementById("onboarding-root").style.display = "flex";
+  const list = document.getElementById("obDaysList");
+  if (!list.children.length) list.insertAdjacentHTML("beforeend", obDayCardHtml());
+}
+
+async function checkOnboardingAndProceed() {
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    const { data: days, error } = await sb.from("workout_days").select("id").eq("user_id", user.id).limit(1);
+    if (error) throw error;
+    if (!days || !days.length) { showOnboarding(); }
+    else { showApp(); loadAll(); }
+  } catch (e) {
+    // if the check itself fails (offline, etc.) fail open into the normal app —
+    // loadAll's own error banner explains it if something's actually wrong
+    showApp(); loadAll();
+  }
+}
+
+document.getElementById("obAddDayBtn").addEventListener("click", () => {
+  document.getElementById("obDaysList").insertAdjacentHTML("beforeend", obDayCardHtml());
+});
+wireObDayListEvents(document.getElementById("obDaysList"));
+
+document.getElementById("onboardingSignOutBtn").addEventListener("click", async () => { await sb.auth.signOut(); });
+
+document.getElementById("obFinishBtn").addEventListener("click", async () => {
+  const errEl = document.getElementById("obError");
+  errEl.textContent = "";
+
+  const days = [...document.querySelectorAll("#obDaysList .ob-day-card")].map(readObDayCard).filter(d => d.code && d.name);
+  if (!days.length) { errEl.textContent = "Add at least one workout day with a code and name."; return; }
+  if (days.some(d => !d.exercises.length)) { errEl.textContent = "Every day needs at least one named exercise."; return; }
+
+  const full_name = document.getElementById("obName").value.trim();
+  const height_in = document.getElementById("obHeight").value ? Number(document.getElementById("obHeight").value) : null;
+  const starting_weight_lb = document.getElementById("obStartWeight").value ? Number(document.getElementById("obStartWeight").value) : null;
+  const protein_g = Number(document.getElementById("obProtein").value) || 0;
+  const carbs_g = Number(document.getElementById("obCarbs").value) || 0;
+  const fat_g = Number(document.getElementById("obFat").value) || 0;
+  const weight_target_lb = document.getElementById("obGoalWeight").value ? Number(document.getElementById("obGoalWeight").value) : null;
+  const target_date = document.getElementById("obTargetDate").value || null;
+
+  const btn = document.getElementById("obFinishBtn");
+  const prevLabel = btn.textContent;
+  btn.disabled = true; btn.textContent = "Setting up…";
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    await sb.from("profiles").upsert({ user_id: user.id, full_name, height_in, starting_weight_lb }, { onConflict: "user_id" });
+    if (protein_g || carbs_g || fat_g || weight_target_lb) {
+      await sb.from("daily_targets").insert({ user_id: user.id, effective_date: todayStr(), protein_g, carbs_g, fat_g, weight_target_lb, target_date });
+    }
+    for (let i = 0; i < days.length; i++) await insertWorkoutDay(days[i], i + 1);
+
+    showToast("Program set up — let's get started");
+    showApp();
+    loadAll();
+  } catch (e) {
+    errEl.textContent = e.message || "Something went wrong saving your program.";
+    btn.disabled = false; btn.textContent = prevLabel;
+  }
+});
+
+// ---- Profile tab: add a workout day to an existing program ----
+document.getElementById("showAddDayBtn").addEventListener("click", () => {
+  const list = document.getElementById("addDayList");
+  const btn = document.getElementById("showAddDayBtn");
+  if (list.children.length) return; // already open
+  list.insertAdjacentHTML("beforeend", obDayCardHtml());
+  list.insertAdjacentHTML("beforeend", '<button class="btn" id="saveAddDayBtn" type="button" style="margin-top:10px;">Save this day</button><div class="auth-error" id="addDayError"></div>');
+  btn.style.display = "none";
+  document.getElementById("saveAddDayBtn").addEventListener("click", async () => {
+    const errEl = document.getElementById("addDayError");
+    errEl.textContent = "";
+    const day = readObDayCard(list.querySelector(".ob-day-card"));
+    if (!day.code || !day.name) { errEl.textContent = "Give the day a code and a name."; return; }
+    if (!day.exercises.length) { errEl.textContent = "Add at least one named exercise."; return; }
+    const saveBtn = document.getElementById("saveAddDayBtn");
+    saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+    try {
+      const { data: { user } } = await sb.auth.getUser();
+      const { data: existing } = await sb.from("workout_days").select("sequence_order").eq("user_id", user.id).order("sequence_order", { ascending: false }).limit(1);
+      const nextSeq = (existing && existing[0] ? existing[0].sequence_order : 0) + 1;
+      await insertWorkoutDay(day, nextSeq);
+      list.innerHTML = "";
+      btn.style.display = "";
+      showToast(`Added ${day.code} · ${day.name}`);
+      loadAll(); // refresh day picker / plan so the new day shows up immediately
+    } catch (e) {
+      errEl.textContent = e.message || "Couldn't save that day — check connection.";
+      saveBtn.disabled = false; saveBtn.textContent = "Save this day";
+    }
+  });
+});
+wireObDayListEvents(document.getElementById("addDayList"));
+
+// ============================================================
 // AUTH
 // ============================================================
 let authMode = "login"; // or "signup"
 
 function showApp() {
   document.getElementById("auth-root").style.display = "none";
+  document.getElementById("onboarding-root").style.display = "none";
   document.getElementById("app-root").style.display = "flex";
 }
 function showAuth() {
   document.getElementById("app-root").style.display = "none";
+  document.getElementById("onboarding-root").style.display = "none";
   document.getElementById("auth-root").style.display = "flex";
 }
 
@@ -1885,12 +2214,12 @@ if (LIVE) {
   });
 
   sb.auth.onAuthStateChange((event, session) => {
-    if (session) { showApp(); loadAll(); }
+    if (session) { checkOnboardingAndProceed(); }
     else { showAuth(); }
   });
 
   sb.auth.getSession().then(({ data: { session } }) => {
-    if (session) { showApp(); loadAll(); }
+    if (session) { checkOnboardingAndProceed(); }
     else { showAuth(); }
   });
 } else {
