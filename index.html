@@ -963,6 +963,70 @@ function renderWorkoutCelebration() {
 
 function groupKey(g, gi) { return g.id || ("gi" + gi); }
 
+// ---------- in-progress workout draft (survives phone lock / tab reload) ----------
+// Weight/reps typed mid-workout previously lived only in the WORKOUT JS variable and
+// wasn't written anywhere until "Save workout" — so if the OS discarded/reloaded the
+// page while the phone was locked, everything typed since the last save vanished.
+// This mirrors the in-progress state to localStorage on every edit and on backgrounding,
+// and restores it the next time the same day/cycle/date is loaded.
+const WORKOUT_DRAFT_KEY = "forge_workout_draft_v1";
+
+function saveWorkoutDraft() {
+  if (!currentWorkoutDayId) return;
+  try {
+    localStorage.setItem(WORKOUT_DRAFT_KEY, JSON.stringify({
+      workoutDayId: currentWorkoutDayId,
+      cycleNumber: currentCycleNumber,
+      date: sessionDate,
+      groups: WORKOUT.groups.map(g => ({ id: g.id, sets: g.sets })),
+      checked,
+    }));
+  } catch (e) { /* storage unavailable/full — non-fatal, just skip the safety net */ }
+}
+
+function clearWorkoutDraft() {
+  try { localStorage.removeItem(WORKOUT_DRAFT_KEY); } catch (e) {}
+}
+
+// force any not-yet-blurred set-field inputs to commit into WORKOUT before we save a
+// draft — covers the case where the phone gets locked mid-keystroke, before blur fires
+function commitAllVisibleSetRows() {
+  document.querySelectorAll("#exerciseList .set-row").forEach(row => {
+    const gi = +row.dataset.gi, si = +row.dataset.si;
+    if (!WORKOUT.groups[gi]) return;
+    const split = row.dataset.split === "true";
+    const wField = row.querySelector('[data-part="weight"]');
+    const rField = row.querySelector('[data-part="reps"]');
+    if (!wField) return;
+    const newVal = formatSetStr(wField.value, rField ? rField.value : "", split);
+    WORKOUT.groups[gi].sets[si] = newVal || WORKOUT.groups[gi].sets[si];
+  });
+}
+
+// called right after loadProgram() builds a fresh WORKOUT for the day — overlays any
+// saved draft for that exact same day/cycle/date on top of it
+function restoreWorkoutDraftIfMatching() {
+  let raw;
+  try { raw = localStorage.getItem(WORKOUT_DRAFT_KEY); } catch (e) { return; }
+  if (!raw) return;
+  let draft;
+  try { draft = JSON.parse(raw); } catch (e) { return; }
+  if (!draft || draft.workoutDayId !== currentWorkoutDayId ||
+      draft.cycleNumber !== currentCycleNumber || draft.date !== sessionDate) return;
+  (draft.groups || []).forEach(dg => {
+    const gi = WORKOUT.groups.findIndex(g => g.id === dg.id);
+    if (gi !== -1) WORKOUT.groups[gi].sets = dg.sets;
+  });
+  checked = draft.checked || {};
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && currentWorkoutDayId) { commitAllVisibleSetRows(); saveWorkoutDraft(); }
+});
+window.addEventListener("pagehide", () => {
+  if (currentWorkoutDayId) { commitAllVisibleSetRows(); saveWorkoutDraft(); }
+});
+
 function renderWorkout() {
   document.getElementById("workoutTitle").textContent = WORKOUT.title;
   document.getElementById("workoutSub").textContent = WORKOUT.cycle + (WORKOUT.sub ? " · " + WORKOUT.sub : "");
@@ -1040,6 +1104,7 @@ function renderWorkout() {
       checked[key] = !checked[key];
       renderWorkout();
       updateWorkoutBar();
+      saveWorkoutDraft();
     });
   });
 
@@ -1050,6 +1115,7 @@ function renderWorkout() {
     const rField = row.querySelector('[data-part="reps"]');
     const newVal = formatSetStr(wField.value, rField ? rField.value : "", split);
     WORKOUT.groups[gi].sets[si] = newVal || WORKOUT.groups[gi].sets[si];
+    saveWorkoutDraft();
   }
   list.querySelectorAll(".set-field").forEach(inp => {
     inp.addEventListener("blur", () => commitRow(inp.closest(".set-row")));
@@ -1074,6 +1140,7 @@ function renderWorkout() {
       checked = rekeyed;
       renderWorkout();
       updateWorkoutBar();
+      saveWorkoutDraft();
     });
   });
 
@@ -1084,6 +1151,7 @@ function renderWorkout() {
       sets.push(sets.length ? sets[sets.length - 1] : "");
       renderWorkout();
       updateWorkoutBar();
+      saveWorkoutDraft();
     });
   });
 }
@@ -1174,6 +1242,7 @@ document.getElementById("finishBtn").addEventListener("click", async () => {
         completed: g.sets.every((s, si) => checked[gi + "-" + si]),
       }));
       if (logs.length) await sb.from("session_exercise_logs").insert(logs);
+      clearWorkoutDraft(); // now safely in Supabase — the local safety-net copy is stale
       showToast(msg);
       loadSessionsHistory();
       if (sessionDate === todayStr()) {
@@ -1823,6 +1892,10 @@ async function loadProgram(dayIdOverride, cycleOverride) {
   // whatever's unchecked stayed skipped on purpose (out of time, fatigued, etc.) and
   // is never force-completed.
   WORKOUT = { title: `${nextDay.code} · ${nextDay.name}`, cycle: `Cycle ${cycleForLookup} of ${maxCycle}`, groups, maxCycle, finishedToday: alreadyDoneToday, pinnedToday: alreadyDoneToday };
+
+  // pull back any weights/reps/checks typed since the last save that never made it to
+  // Supabase (e.g. the phone got locked mid-set) — only for this exact day/cycle/date
+  restoreWorkoutDraftIfMatching();
 }
 
 async function loadPlan() {
@@ -2082,7 +2155,7 @@ document.getElementById("obAddDayBtn").addEventListener("click", () => {
 });
 wireObDayListEvents(document.getElementById("obDaysList"));
 
-document.getElementById("onboardingSignOutBtn").addEventListener("click", async () => { await sb.auth.signOut(); });
+document.getElementById("onboardingSignOutBtn").addEventListener("click", async () => { clearWorkoutDraft(); await sb.auth.signOut(); });
 
 document.getElementById("obFinishBtn").addEventListener("click", async () => {
   const errEl = document.getElementById("obError");
@@ -2208,6 +2281,7 @@ if (LIVE) {
   });
 
   document.getElementById("signOutBtn").addEventListener("click", async () => {
+    clearWorkoutDraft();
     await sb.auth.signOut();
   });
 
