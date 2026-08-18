@@ -238,6 +238,11 @@
   .ring-target { font-size: 10.5px; color: var(--text-muted); margin-top: 1px; }
   .ring-target.hit { color: var(--status-good); font-weight: 650; }
 
+  /* calories — informational total below the macro rings, not part of the ring
+     goal/progress math, so it can never quietly affect the macro targets */
+  .cal-stat { text-align: center; font-size: 12.5px; color: var(--text-muted); margin: 2px 0 10px; }
+  .cal-stat b { color: var(--text-primary, inherit); font-weight: 700; }
+
   /* quick add */
   .qa-input {
     width: 100%; padding: 12px 13px; border-radius: 12px; border: 1.5px solid var(--border);
@@ -605,6 +610,7 @@
       <input type="date" id="nutritionDateInput" class="date-input-inline" max="">
     </div>
     <div class="rings-row" id="ringsRow"></div>
+    <div class="cal-stat" id="calStat"></div>
 
     <div class="food-input-wrap">
       <input class="qa-input" id="foodInput" placeholder="What did you eat?" autocomplete="off">
@@ -616,6 +622,7 @@
       <div class="chip" data-chip="fat">Fat</div>
       <div class="chip" data-chip="shake">Had Shake</div>
     </div>
+    <input class="qa-input" id="alcoholInput" type="number" inputmode="decimal" min="0" step="1" placeholder="Alcohol g (optional — ~14g per standard drink)">
     <button class="btn ghost" id="logFoodBtn">Log it</button>
 
     <div id="foodList" style="margin-top:14px;"></div>
@@ -1339,6 +1346,18 @@ function renderRings() {
     row.appendChild(div);
   });
   document.getElementById("statProtein").textContent = MACROS.protein.current + "g";
+
+  // Calories are informational only — derived from the same logged macros (4/4/9
+  // kcal per g of protein/carbs/fat) plus alcohol (7 kcal/g, tracked separately since
+  // it isn't a macro). This never feeds back into the ring targets/progress above.
+  const alcoholTotal = food.reduce((a, f) => a + (Number(f.alcohol_g) || 0), 0);
+  const kcal = Math.round(
+    MACROS.protein.current * 4 + MACROS.carbs.current * 4 + MACROS.fat.current * 9 + alcoholTotal * 7
+  );
+  const calStat = document.getElementById("calStat");
+  if (calStat) {
+    calStat.innerHTML = `<b>${kcal}</b> kcal today` + (alcoholTotal ? ` (incl. ~${Math.round(alcoholTotal * 7)} from alcohol)` : "");
+  }
   // animate rings in on next frame
   requestAnimationFrame(() => {
     row.querySelectorAll("circle.fg").forEach(c => { c.style.strokeDashoffset = c.dataset.targetOffset; });
@@ -1365,6 +1384,7 @@ function renderFood() {
             <input class="qa-input" data-edit="carbs" type="number" inputmode="decimal" placeholder="Carbs g" value="${f.carbs_g || ""}">
             <input class="qa-input" data-edit="fat" type="number" inputmode="decimal" placeholder="Fat g" value="${f.fat_g || ""}">
           </div>
+          <input class="qa-input" data-edit="alcohol" type="number" inputmode="decimal" placeholder="Alcohol g (optional)" value="${f.alcohol_g || ""}" style="margin-top:8px;">
           <div style="display:flex;gap:8px;margin-top:10px;">
             <button class="btn" style="margin-top:0;" data-action="save-food" data-id="${f.id}">Save</button>
             <button class="btn ghost" style="margin-top:0;" data-action="cancel-food">Cancel</button>
@@ -1416,10 +1436,11 @@ async function saveFoodEdit(id) {
   const protein_g = Number(row.querySelector('[data-edit="protein"]').value) || 0;
   const carbs_g = Number(row.querySelector('[data-edit="carbs"]').value) || 0;
   const fat_g = Number(row.querySelector('[data-edit="fat"]').value) || 0;
+  const alcohol_g = Number(row.querySelector('[data-edit="alcohol"]').value) || 0;
   const item = food.find(f => f.id === id);
   if (!item || !name) return;
   const oldP = item.protein_g || 0, oldC = item.carbs_g || 0, oldF = item.fat_g || 0;
-  item.name = name; item.protein_g = protein_g; item.carbs_g = carbs_g; item.fat_g = fat_g;
+  item.name = name; item.protein_g = protein_g; item.carbs_g = carbs_g; item.fat_g = fat_g; item.alcohol_g = alcohol_g;
   MACROS.protein.current = Math.max(0, MACROS.protein.current + (protein_g - oldP));
   MACROS.carbs.current = Math.max(0, MACROS.carbs.current + (carbs_g - oldC));
   MACROS.fat.current = Math.max(0, MACROS.fat.current + (fat_g - oldF));
@@ -1428,7 +1449,7 @@ async function saveFoodEdit(id) {
   renderFood();
   if (LIVE) {
     try {
-      await sb.from("nutrition_log").update({ name, protein_g, carbs_g, fat_g }).eq("id", id);
+      await sb.from("nutrition_log").update({ name, protein_g, carbs_g, fat_g, alcohol_g }).eq("id", id);
       showToast("Updated");
     } catch (e) { showToast("Couldn't save — check connection", true); }
   } else {
@@ -1495,7 +1516,7 @@ async function loadFoodItems() {
   FOOD_ITEMS = data || [];
 }
 
-async function recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd) {
+async function recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd, alcoholAdd) {
   if (!LIVE) return;
   try {
     const { data: { user } } = await sb.auth.getUser();
@@ -1503,11 +1524,11 @@ async function recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fa
     if (existing) {
       await sb.from("food_items").update({
         use_count: (existing.use_count || 1) + 1, last_used_at: new Date().toISOString(),
-        protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd, covers, had_shake: shake,
+        protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd, alcohol_g: alcoholAdd || 0, covers, had_shake: shake,
       }).eq("id", existing.id);
     } else {
       await sb.from("food_items").insert({
-        user_id: user.id, name, protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd,
+        user_id: user.id, name, protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd, alcohol_g: alcoholAdd || 0,
         covers, had_shake: shake, use_count: 1, last_used_at: new Date().toISOString(),
       });
     }
@@ -1536,12 +1557,17 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
     ? selectedFoodItem
     : FOOD_ITEMS.find(f => f.name.toLowerCase() === name.toLowerCase());
 
+  const alcoholInput = document.getElementById("alcoholInput");
+  let alcoholAdd = Number(alcoholInput.value) || 0;
+
   let proteinAdd, carbsAdd, fatAdd, macroSource;
   if (known) {
     proteinAdd = Number(known.protein_g) || 0;
     carbsAdd = Number(known.carbs_g) || 0;
     fatAdd = Number(known.fat_g) || 0;
     macroSource = "saved";
+    // a manually-typed alcohol amount always wins over whatever the saved preset had
+    if (!alcoholInput.value) alcoholAdd = Number(known.alcohol_g) || 0;
   } else {
     const logBtn = document.getElementById("logFoodBtn");
     const prevLabel = logBtn.textContent;
@@ -1559,7 +1585,7 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
     }
   }
 
-  const newItem = { id: null, name, tags, shake, protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd };
+  const newItem = { id: null, name, tags, shake, protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd, alcohol_g: alcoholAdd };
   food.push(newItem);
   MACROS.protein.current += proteinAdd;
   MACROS.carbs.current += carbsAdd;
@@ -1567,6 +1593,7 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
   renderRings();
   renderFood();
   input.value = "";
+  alcoholInput.value = "";
   activeTags.clear();
   selectedFoodItem = null;
   document.querySelectorAll(".chip").forEach(c => c.className = "chip");
@@ -1578,7 +1605,7 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
       const { data: { user } } = await sb.auth.getUser();
       const { data: inserted, error } = await sb.from("nutrition_log").insert({
         user_id: user.id, name, date: nutritionDate, covers, had_shake: shake,
-        protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd,
+        protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd, alcohol_g: alcoholAdd,
       }).select().single();
       if (error) throw error;
       newItem.id = inserted.id;
@@ -1588,7 +1615,7 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
         : macroSource === "api" ? `Logged${dateSuffix} — estimated ${proteinAdd}p/${carbsAdd}c/${fatAdd}f (tap to edit if off)`
         : "Logged" + dateSuffix + " — rough guess, tap to edit macros";
       showToast(toastMsg);
-      recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd);
+      recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd, alcoholAdd);
     } catch (e) { showToast("Couldn't save — check connection", true); }
   } else {
     newItem.id = "demo-" + Math.random().toString(36).slice(2);
@@ -1959,6 +1986,7 @@ async function loadNutritionForDate(date) {
     protein_g: Number(r.protein_g) || 0,
     carbs_g: Number(r.carbs_g) || 0,
     fat_g: Number(r.fat_g) || 0,
+    alcohol_g: Number(r.alcohol_g) || 0,
   }));
 }
 
