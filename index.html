@@ -790,33 +790,96 @@ const CONFIG = {
 const LIVE = !!(CONFIG.SUPABASE_URL && !CONFIG.SUPABASE_URL.startsWith("YOUR_"));
 const sb = LIVE ? supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY) : null;
 
-// Look up real macros for free-text food descriptions via a Supabase Edge Function
-// (nutrition-lookup) that proxies CalorieNinjas' natural-language API server-side —
-// the API key lives in the function's secrets, never in this file, and the function
-// caps lookups per user per day so one account can't run up everyone's shared quota.
-// Returns null on any failure (offline, not signed in, daily cap hit, nothing
-// recognized) so callers can silently fall back to the old rough tag-based guess.
-async function estimateMacrosFromAPI(text) {
+// ---------- local nutrition composer — our own DB, never a third-party API ----------
+// nutrition_ingredients / nutrition_units are global reference tables in our own Supabase
+// project (verified per-100g macros for raw ingredients + gram conversions for common
+// units — cup, tbsp, idli, egg, roti...). Free-text food descriptions are decomposed into
+// "<qty> <unit> <ingredient>" segments, each resolved against these tables and summed.
+// Nothing here ever calls an external nutrition API. A segment that can't be confidently
+// matched AND sized is simply skipped — this never fabricates a number the way the old
+// third-party lookup sometimes did.
+let NUTRITION_INGREDIENTS = [];
+let NUTRITION_UNITS = [];
+
+function nutritionRefCacheKey(kind) { return "forge_nutrition_" + kind + "_v1"; }
+function loadNutritionRefCache(kind) {
   try {
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session) return null;
-    const res = await fetch(CONFIG.SUPABASE_URL + "/functions/v1/nutrition-lookup", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + session.access_token,
-        "apikey": CONFIG.SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ query: text }),
-    });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) {
-      if (res.status === 429 && data && data.error) showToast(data.error, true);
-      return null;
-    }
-    if (!data || !data.matchedCount) return null;
-    return { protein_g: data.protein_g, carbs_g: data.carbs_g, fat_g: data.fat_g, matchedCount: data.matchedCount };
+    const raw = localStorage.getItem(nutritionRefCacheKey(kind));
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : null;
   } catch (e) { return null; }
+}
+function saveNutritionRefCache(kind, items) {
+  try { localStorage.setItem(nutritionRefCacheKey(kind), JSON.stringify(items)); } catch (e) {}
+}
+
+async function loadNutritionReference() {
+  if (!LIVE) return;
+  const cachedIng = loadNutritionRefCache("ingredients");
+  const cachedUnits = loadNutritionRefCache("units");
+  if (cachedIng) NUTRITION_INGREDIENTS = cachedIng;
+  if (cachedUnits) NUTRITION_UNITS = cachedUnits;
+  try {
+    const [{ data: ing }, { data: units }] = await Promise.all([
+      sb.from("nutrition_ingredients").select("*").limit(1000),
+      sb.from("nutrition_units").select("*").limit(1000),
+    ]);
+    if (ing) { NUTRITION_INGREDIENTS = ing; saveNutritionRefCache("ingredients", ing); }
+    if (units) { NUTRITION_UNITS = units; saveNutritionRefCache("units", units); }
+  } catch (e) { /* offline — keep serving whatever's cached */ }
+}
+
+function findIngredientMatch(text) {
+  let best = null, bestScore = 0;
+  NUTRITION_INGREDIENTS.forEach(ing => {
+    [ing.name, ...(ing.aliases || [])].forEach(n => {
+      const score = foodNameMatchScore(text, n);
+      if (score > bestScore) { bestScore = score; best = ing; }
+    });
+  });
+  return bestScore >= FOOD_MATCH_FUZZY_THRESHOLD ? best : null;
+}
+
+function findUnitGrams(unitWord, category) {
+  if (!unitWord) return null;
+  const uNorm = unitWord.toLowerCase().replace(/s$/, "");
+  const norm = u => u.toLowerCase().replace(/s$/, "");
+  let row = NUTRITION_UNITS.find(x => norm(x.unit) === uNorm && x.category === category);
+  if (!row) row = NUTRITION_UNITS.find(x => norm(x.unit) === uNorm && x.category === "generic");
+  return row ? Number(row.grams_per_unit) : null;
+}
+
+// entirely synchronous/local — no network call, so there's no loading state to show
+function estimateMacrosFromIngredients(text) {
+  const segments = String(text).split(/,|\band\b|\+/i).map(s => s.trim()).filter(Boolean);
+  let protein = 0, carbs = 0, fat = 0, alcohol = 0, resolved = 0;
+  const matchedNames = [];
+  segments.forEach(seg => {
+    const m = seg.match(/^([\d.\/]+)\s*([a-zA-Z]*)/);
+    if (!m) return;
+    let qty;
+    if (m[1].includes("/")) {
+      const [n, d] = m[1].split("/").map(Number);
+      qty = d ? n / d : NaN;
+    } else qty = Number(m[1]);
+    if (!qty || !isFinite(qty)) return;
+    const ing = findIngredientMatch(seg);
+    if (!ing) return;
+    const perUnit = findUnitGrams(m[2], ing.category);
+    if (perUnit == null) return; // can't confidently size the portion — skip rather than guess
+    const scale = (qty * perUnit) / 100;
+    protein += ing.protein_g_per_100 * scale;
+    carbs += ing.carbs_g_per_100 * scale;
+    fat += ing.fat_g_per_100 * scale;
+    alcohol += ing.alcohol_g_per_100 * scale;
+    resolved++;
+    matchedNames.push(ing.name);
+  });
+  if (!resolved) return null;
+  return {
+    protein_g: Math.round(protein), carbs_g: Math.round(carbs), fat_g: Math.round(fat), alcohol_g: Math.round(alcohol),
+    matchedCount: resolved, totalSegments: segments.length, matchedNames,
+  };
 }
 
 document.getElementById("todayDate").textContent = new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
@@ -901,6 +964,38 @@ function doneSets() { return Object.values(checked).filter(Boolean).length; }
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+// ---------- fuzzy match against your own logged foods, before ever calling the API ----------
+// FOOD_ITEMS is your personal cache (auto-saved every time you log something). Exact-name
+// matches already used it silently; this adds a looser match for re-phrased descriptions
+// of the same meal ("2 idli, chutney" vs "4 idli with peanut chutney") so more of your
+// day-to-day logging never touches the nutrition API at all — only genuinely new foods do.
+const FOOD_MATCH_STOPWORDS = new Set([
+  "with","and","the","a","an","of","from","for","in","on","without","boiled","grill","grilled",
+  "gms","gm","g","cup","cups","tbsp","tsp","ml","oz","lb","lbs","whole","big","small","large",
+]);
+function tokenizeFoodName(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/)
+    .filter(t => t.length > 1 && !FOOD_MATCH_STOPWORDS.has(t) && !/^\d+$/.test(t));
+}
+// overlap coefficient (intersection / smaller set) — rewards one description fully
+// containing the other, which is the common case for a shorter re-typed version
+function foodNameMatchScore(a, b) {
+  const ta = new Set(tokenizeFoodName(a)), tb = new Set(tokenizeFoodName(b));
+  if (!ta.size || !tb.size) return 0;
+  let overlap = 0;
+  ta.forEach(t => { if (tb.has(t)) overlap++; });
+  return overlap / Math.min(ta.size, tb.size);
+}
+const FOOD_MATCH_FUZZY_THRESHOLD = 0.7;
+function findFuzzyFoodMatch(name) {
+  let best = null, bestScore = 0;
+  FOOD_ITEMS.forEach(f => {
+    const score = foodNameMatchScore(name, f.name);
+    if (score > bestScore) { bestScore = score; best = f; }
+  });
+  return bestScore >= FOOD_MATCH_FUZZY_THRESHOLD ? best : null;
 }
 
 // a set is stored as one string ("45 x 12", "BW x 9", "complete", "20-30 min").
@@ -1508,12 +1603,44 @@ foodInputEl.addEventListener("input", () => {
 foodInputEl.addEventListener("blur", () => setTimeout(() => renderFoodSuggest([]), 120));
 foodInputEl.addEventListener("focus", () => { if (foodInputEl.value.trim()) foodInputEl.dispatchEvent(new Event("input")); });
 
+// ---------- local-first cache for FOOD_ITEMS (your saved-food matcher) ----------
+// Read the cache synchronously and serve it immediately so fuzzy-matching in the log
+// composer works instantly (and even offline), without waiting on a round trip. The DB
+// is still refreshed in the background every load and re-cached, so the local copy keeps
+// building/staying current — it just never blocks on the network to be usable.
+function foodItemsCacheKey(userId) { return "forge_food_items_v1_" + userId; }
+function loadFoodItemsCache(userId) {
+  try {
+    const raw = localStorage.getItem(foodItemsCacheKey(userId));
+    const parsed = raw ? JSON.parse(raw) : null;
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (e) { return null; }
+}
+function saveFoodItemsCache(userId, items) {
+  try { localStorage.setItem(foodItemsCacheKey(userId), JSON.stringify(items)); } catch (e) { /* storage full/unavailable — non-fatal */ }
+}
+function clearFoodItemsCache(userId) {
+  try { localStorage.removeItem(foodItemsCacheKey(userId)); } catch (e) {}
+}
+
 async function loadFoodItems() {
   if (!LIVE) return;
   const { data: { user } } = await sb.auth.getUser();
-  const { data } = await sb.from("food_items").select("*").eq("user_id", user.id)
-    .order("use_count", { ascending: false }).order("last_used_at", { ascending: false }).limit(100);
-  FOOD_ITEMS = data || [];
+
+  // cache available -> serve it right away, no waiting on the network
+  const cached = loadFoodItemsCache(user.id);
+  if (cached) FOOD_ITEMS = cached;
+
+  // cache not available (or just to stay fresh) -> fall back to / sync from the DB.
+  // if this fails (offline, etc.) we simply keep serving whatever the cache already gave us.
+  try {
+    const { data } = await sb.from("food_items").select("*").eq("user_id", user.id)
+      .order("use_count", { ascending: false }).order("last_used_at", { ascending: false }).limit(100);
+    if (data) {
+      FOOD_ITEMS = data;
+      saveFoodItemsCache(user.id, data);
+    }
+  } catch (e) { /* offline — cached FOOD_ITEMS (if any) stays in effect */ }
 }
 
 async function recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd, alcoholAdd) {
@@ -1553,30 +1680,34 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
   // known food picked from suggestions (or exact name match) -> use its real macros;
   // otherwise ask the nutrition API to parse the free-text description; otherwise fall
   // back to a simple per-tag estimate.
-  const known = selectedFoodItem && selectedFoodItem.name.toLowerCase() === name.toLowerCase()
+  const exactMatch = selectedFoodItem && selectedFoodItem.name.toLowerCase() === name.toLowerCase()
     ? selectedFoodItem
     : FOOD_ITEMS.find(f => f.name.toLowerCase() === name.toLowerCase());
+  // no exact match — check for a re-worded version of something you've already logged
+  // before ever calling the API
+  const fuzzyMatch = exactMatch ? null : findFuzzyFoodMatch(name);
+  const known = exactMatch || fuzzyMatch;
 
   const alcoholInput = document.getElementById("alcoholInput");
   let alcoholAdd = Number(alcoholInput.value) || 0;
 
-  let proteinAdd, carbsAdd, fatAdd, macroSource;
+  let proteinAdd, carbsAdd, fatAdd, macroSource, composedMeta;
   if (known) {
     proteinAdd = Number(known.protein_g) || 0;
     carbsAdd = Number(known.carbs_g) || 0;
     fatAdd = Number(known.fat_g) || 0;
-    macroSource = "saved";
+    macroSource = exactMatch ? "saved" : "saved-fuzzy";
     // a manually-typed alcohol amount always wins over whatever the saved preset had
     if (!alcoholInput.value) alcoholAdd = Number(known.alcohol_g) || 0;
   } else {
-    const logBtn = document.getElementById("logFoodBtn");
-    const prevLabel = logBtn.textContent;
-    logBtn.disabled = true; logBtn.textContent = "Estimating…";
-    const est = await estimateMacrosFromAPI(name);
-    logBtn.disabled = false; logBtn.textContent = prevLabel;
+    // local + synchronous — decomposes the text against our own ingredient/unit tables,
+    // no network call, no third-party API, ever
+    const est = estimateMacrosFromIngredients(name);
     if (est) {
       proteinAdd = est.protein_g; carbsAdd = est.carbs_g; fatAdd = est.fat_g;
-      macroSource = "api";
+      if (!alcoholInput.value) alcoholAdd = est.alcohol_g || 0;
+      macroSource = "composed";
+      composedMeta = est;
     } else {
       proteinAdd = tags.includes("protein") ? 15 : 0;
       carbsAdd = tags.includes("carbs") ? 20 : 0;
@@ -1612,7 +1743,9 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
       renderFood();
       const dateSuffix = nutritionDate === todayStr() ? "" : " for " + nutritionDate;
       const toastMsg = macroSource === "saved" ? "Logged — used your saved macros" + dateSuffix
-        : macroSource === "api" ? `Logged${dateSuffix} — estimated ${proteinAdd}p/${carbsAdd}c/${fatAdd}f (tap to edit if off)`
+        : macroSource === "saved-fuzzy" ? `Logged${dateSuffix} — matched to "${known.name}" (check serving size)`
+        : macroSource === "composed" ? `Logged${dateSuffix} — composed from ${composedMeta.matchedNames.join(", ")}`
+          + (composedMeta.matchedCount < composedMeta.totalSegments ? ` (${composedMeta.matchedCount}/${composedMeta.totalSegments} items sized — rest skipped, check macros)` : " (tap to edit if off)")
         : "Logged" + dateSuffix + " — rough guess, tap to edit macros";
       showToast(toastMsg);
       recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd, alcoholAdd);
@@ -2037,7 +2170,7 @@ function updateNutritionEyebrow() {
 async function loadAll() {
   try {
     await loadProgram();
-    await Promise.all([loadNutritionForDate(nutritionDate), loadSessionsHistory(), computeStreak(), loadPlan(), loadFoodItems(), loadProfile(), loadBestLifts()]);
+    await Promise.all([loadNutritionForDate(nutritionDate), loadSessionsHistory(), computeStreak(), loadPlan(), loadFoodItems(), loadNutritionReference(), loadProfile(), loadBestLifts()]);
     setBanner("", false);
   } catch (e) {
     setBanner(`<b>Couldn't load your data.</b> ${e.message || "Check your connection and try again."}`, true);
@@ -2183,7 +2316,15 @@ document.getElementById("obAddDayBtn").addEventListener("click", () => {
 });
 wireObDayListEvents(document.getElementById("obDaysList"));
 
-document.getElementById("onboardingSignOutBtn").addEventListener("click", async () => { clearWorkoutDraft(); await sb.auth.signOut(); });
+async function signOutAndClearLocalCaches() {
+  clearWorkoutDraft();
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    if (user) clearFoodItemsCache(user.id);
+  } catch (e) {}
+  await sb.auth.signOut();
+}
+document.getElementById("onboardingSignOutBtn").addEventListener("click", signOutAndClearLocalCaches);
 
 document.getElementById("obFinishBtn").addEventListener("click", async () => {
   const errEl = document.getElementById("obError");
@@ -2308,10 +2449,7 @@ if (LIVE) {
     }
   });
 
-  document.getElementById("signOutBtn").addEventListener("click", async () => {
-    clearWorkoutDraft();
-    await sb.auth.signOut();
-  });
+  document.getElementById("signOutBtn").addEventListener("click", signOutAndClearLocalCaches);
 
   sb.auth.onAuthStateChange((event, session) => {
     if (session) { checkOnboardingAndProceed(); }
