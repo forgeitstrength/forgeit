@@ -270,7 +270,7 @@
   .chip.on-protein { background: var(--series-protein); border-color: var(--series-protein); color: #fff; }
   .chip.on-carbs { background: var(--series-carbs); border-color: var(--series-carbs); color: #fff; }
   .chip.on-fat { background: var(--series-fat); border-color: var(--series-fat); color: #fff; }
-  .chip.on-shake { background: var(--text-primary); border-color: var(--text-primary); color: var(--surface-1); }
+  .chip.on-shake, .chip.on { background: var(--text-primary); border-color: var(--text-primary); color: var(--surface-1); }
 
   .food-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--gridline); animation: fade .3s ease; }
   .food-item:first-of-type { border-top: none; }
@@ -420,6 +420,20 @@
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   .toast.err { background: var(--status-bad); color: white; }
+
+  /* rest timer — floats above the tabbar while a rest period is counting down */
+  .rest-timer {
+    position: fixed; left: 50%; bottom: calc(78px + env(safe-area-inset-bottom));
+    transform: translateX(-50%); z-index: 60; display: flex; align-items: center; gap: 10px;
+    background: var(--text-primary); color: var(--surface-1); padding: 8px 10px 8px 16px;
+    border-radius: 999px; box-shadow: var(--card-shadow); white-space: nowrap;
+  }
+  .rest-timer span { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .rest-timer button {
+    font-family: inherit; font-size: 12px; font-weight: 700; border: none; border-radius: 999px;
+    padding: 7px 12px; cursor: pointer; background: rgba(255,255,255,0.16); color: inherit;
+  }
+  .rest-timer button:active { background: rgba(255,255,255,0.28); }
 
   .preview-banner {
     background: var(--surface-2); border: 1px dashed var(--border); border-radius: 14px;
@@ -611,6 +625,7 @@
     </div>
     <div class="rings-row" id="ringsRow"></div>
     <div class="cal-stat" id="calStat"></div>
+    <div class="cal-stat" id="fiberStat"></div>
 
     <div class="food-input-wrap">
       <input class="qa-input" id="foodInput" placeholder="What did you eat?" autocomplete="off">
@@ -622,10 +637,49 @@
       <div class="chip" data-chip="fat">Fat</div>
       <div class="chip" data-chip="shake">Had Shake</div>
     </div>
-    <input class="qa-input" id="alcoholInput" type="number" inputmode="decimal" min="0" step="1" placeholder="Alcohol g (optional — ~14g per standard drink)">
+    <div class="field-row">
+      <input class="qa-input" id="alcoholInput" type="number" inputmode="decimal" min="0" step="1" placeholder="Alcohol g (optional)">
+      <input class="qa-input" id="fiberInput" type="number" inputmode="decimal" min="0" step="1" placeholder="Fiber g (optional)">
+    </div>
     <button class="btn ghost" id="logFoodBtn">Log it</button>
+    <button class="btn text-link" id="copyYesterdayBtn" style="margin-top:2px;">Copy yesterday's log</button>
 
     <div id="foodList" style="margin-top:14px;"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-eyebrow">Hydration</div>
+        <div class="card-title" id="waterTotalDisplay">0 ml today</div>
+      </div>
+    </div>
+    <div class="bar-track"><div class="bar-fill" id="waterBar" style="width:0%"></div></div>
+    <div class="chip-row">
+      <div class="chip" data-water="250">+250 ml</div>
+      <div class="chip" data-water="500">+500 ml</div>
+      <div class="chip" data-water="1000">+1 L</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-eyebrow">Supplements</div>
+        <div class="card-title">Today</div>
+      </div>
+    </div>
+    <div class="chip-row" id="supplementChipRow">
+      <div class="chip" data-supp="Creatine">Creatine</div>
+      <div class="chip" data-supp="Protein powder">Protein powder</div>
+      <div class="chip" data-supp="Multivitamin">Multivitamin</div>
+      <div class="chip" data-supp="Fish oil">Fish oil</div>
+      <div class="chip" data-supp="Vitamin D">Vitamin D</div>
+    </div>
+    <div class="food-input-wrap" style="margin-top:10px;">
+      <input class="qa-input" id="supplementInput" placeholder="Other (type and press Enter)" autocomplete="off" style="margin-top:0;">
+    </div>
+    <div id="supplementList" style="margin-top:12px;"></div>
   </div>
 
 </div>
@@ -665,7 +719,17 @@
     <div id="bestLiftsList"></div>
   </details>
 
-  <div class="note-card">Trend lines and nutrition adherence over time are next up for this tab.</div>
+  <div class="card chart-wrap">
+    <div class="card-eyebrow">Volume by muscle group (7 days)</div>
+    <div id="volumeByGroupList" style="margin-top:6px;"></div>
+  </div>
+
+  <div class="card chart-wrap">
+    <div class="card-eyebrow">Macro target adherence (7 days)</div>
+    <div class="chart-bars" id="adherenceBars"></div>
+  </div>
+
+  <div class="note-card">Trend lines for body weight live on the Profile tab, under Body metrics.</div>
 </div>
 
 <!-- PROFILE VIEW -->
@@ -714,6 +778,16 @@
       <input class="qa-input" id="pfCarbs" type="number" inputmode="decimal" placeholder="Carbs">
       <input class="qa-input" id="pfFat" type="number" inputmode="decimal" placeholder="Fat">
     </div>
+    <div class="field-row">
+      <div>
+        <div class="field-label">Fiber target (g)</div>
+        <input class="qa-input" id="pfFiber" type="number" inputmode="decimal" placeholder="optional">
+      </div>
+      <div>
+        <div class="field-label">Water target (ml)</div>
+        <input class="qa-input" id="pfWaterTarget" type="number" inputmode="decimal" placeholder="e.g. 3000">
+      </div>
+    </div>
 
     <div class="field-row">
       <div>
@@ -735,6 +809,40 @@
   </div>
 
   <div class="note-card">Saving goals keeps a dated history, so your targets can evolve as your program does.</div>
+
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-eyebrow">Body metrics</div>
+        <div class="card-title">Log a scan</div>
+      </div>
+    </div>
+    <div class="card-sub">From a scale, InBody, or however you measure — leave a field blank if you don't have it.</div>
+    <div class="field-row">
+      <div><div class="field-label" style="margin-top:0;">Weight (lb)</div><input class="qa-input" id="bmWeight" type="number" inputmode="decimal" placeholder="e.g. 178.4" style="margin-top:0;"></div>
+      <div><div class="field-label" style="margin-top:0;">Body fat %</div><input class="qa-input" id="bmBodyFat" type="number" inputmode="decimal" placeholder="e.g. 18.2" style="margin-top:0;"></div>
+    </div>
+    <div class="field-row">
+      <div><div class="field-label">Skeletal muscle (lb)</div><input class="qa-input" id="bmMuscle" type="number" inputmode="decimal" placeholder="e.g. 82.1"></div>
+      <div><div class="field-label">BMI</div><input class="qa-input" id="bmBmi" type="number" inputmode="decimal" placeholder="optional"></div>
+    </div>
+    <div class="session-date-row" style="margin-top:10px;">
+      <span class="date-inline-label">Date</span>
+      <input type="date" id="bmDateInput" class="date-input-inline" max="">
+    </div>
+    <button class="btn ghost" id="logBodyMetricBtn" style="margin-top:12px;">Log scan</button>
+    <div id="bodyMetricsList" style="margin-top:14px;"></div>
+  </div>
+
+  <div class="card" id="tdeeCard" style="display:none;">
+    <div class="card-head">
+      <div>
+        <div class="card-eyebrow">Estimated from your data</div>
+        <div class="card-title">Maintenance calories</div>
+      </div>
+    </div>
+    <div id="tdeeBody" class="card-sub" style="margin-bottom:0;"></div>
+  </div>
 
   <div class="card">
     <div class="card-head">
@@ -776,6 +884,12 @@
 </nav>
 
 </div><!-- /app-root -->
+
+<div class="rest-timer" id="restTimer" style="display:none;">
+  <span id="restTimerLabel">Rest — 1:30</span>
+  <button type="button" id="restTimerAdd30">+30s</button>
+  <button type="button" id="restTimerSkip">Skip</button>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -937,6 +1051,10 @@ const DEMO_PLAN = [
 // ---------- mutable app state ----------
 let WORKOUT = DEMO_WORKOUT;
 let MACROS = JSON.parse(JSON.stringify(DEMO_MACROS));
+let FIBER = { current: 0, target: 0 };  // tracked separately from MACROS — informational, not a ring
+let WATER_TOTAL = 0, WATER_TARGET = 0;  // ml, for the currently viewed nutritionDate
+let SUPPLEMENTS = [];                   // logged for the currently viewed nutritionDate
+let BODY_METRICS = [];
 let food = DEMO_FOOD.slice();
 let SESSIONS = DEMO_SESSIONS.slice();
 let PLAN = DEMO_PLAN.slice();
@@ -1203,10 +1321,12 @@ function renderWorkout() {
       e.stopPropagation();
       const row = chk.closest(".set-row");
       const key = row.dataset.gi + "-" + row.dataset.si;
-      checked[key] = !checked[key];
+      const turningOn = !checked[key];
+      checked[key] = turningOn;
       renderWorkout();
       updateWorkoutBar();
       saveWorkoutDraft();
+      if (turningOn) startRestTimer(REST_TIMER_DEFAULT_SECONDS);
     });
   });
 
@@ -1304,6 +1424,64 @@ function updateWorkoutBar() {
   }
   wasComplete = isDone || finishedToday;
 }
+
+// ---------- rest timer ----------
+// starts automatically whenever a set gets checked off — the moment you actually
+// need a rest timer, no separate "start rest" tap required
+const REST_TIMER_DEFAULT_SECONDS = 90;
+let restTimerEndAt = null;
+let restTimerInterval = null;
+
+function playRestDoneBeep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.4);
+    osc.onended = () => ctx.close();
+  } catch (e) { /* WebAudio unavailable — vibration (if any) is the only cue */ }
+  if (navigator.vibrate) navigator.vibrate([120, 80, 120]);
+}
+
+function tickRestTimer() {
+  const el = document.getElementById("restTimer");
+  const label = document.getElementById("restTimerLabel");
+  const remaining = Math.round((restTimerEndAt - Date.now()) / 1000);
+  if (remaining <= 0) {
+    stopRestTimer();
+    playRestDoneBeep();
+    return;
+  }
+  const m = Math.floor(remaining / 60), s = remaining % 60;
+  label.textContent = `Rest — ${m}:${String(s).padStart(2, "0")}`;
+}
+
+function startRestTimer(seconds) {
+  restTimerEndAt = Date.now() + seconds * 1000;
+  document.getElementById("restTimer").style.display = "flex";
+  tickRestTimer();
+  clearInterval(restTimerInterval);
+  restTimerInterval = setInterval(tickRestTimer, 1000);
+}
+
+function stopRestTimer() {
+  clearInterval(restTimerInterval);
+  restTimerInterval = null;
+  restTimerEndAt = null;
+  document.getElementById("restTimer").style.display = "none";
+}
+
+document.getElementById("restTimerSkip").addEventListener("click", stopRestTimer);
+document.getElementById("restTimerAdd30").addEventListener("click", () => {
+  if (!restTimerEndAt) return;
+  restTimerEndAt += 30000;
+  tickRestTimer();
+});
 
 document.getElementById("finishBtn").addEventListener("click", async () => {
   if (sessionDate > todayStr()) {
@@ -1454,9 +1632,16 @@ function renderRings() {
   const kcal = Math.round(
     MACROS.protein.current * 4 + MACROS.carbs.current * 4 + MACROS.fat.current * 9 + alcoholTotal * 7
   );
+  const dayWord = nutritionDate === todayStr() ? "today" : "logged";
   const calStat = document.getElementById("calStat");
   if (calStat) {
-    calStat.innerHTML = `<b>${kcal}</b> kcal today` + (alcoholTotal ? ` (incl. ~${Math.round(alcoholTotal * 7)} from alcohol)` : "");
+    calStat.innerHTML = `<b>${kcal}</b> kcal ${dayWord}` + (alcoholTotal ? ` (incl. ~${Math.round(alcoholTotal * 7)} from alcohol)` : "");
+  }
+  const fiberStat = document.getElementById("fiberStat");
+  if (fiberStat) {
+    fiberStat.innerHTML = FIBER.target
+      ? `<b>${FIBER.current}g</b> / ${FIBER.target}g fiber ${dayWord}`
+      : `<b>${FIBER.current}g</b> fiber ${dayWord}`;
   }
   // animate rings in on next frame
   requestAnimationFrame(() => {
@@ -1484,7 +1669,10 @@ function renderFood() {
             <input class="qa-input" data-edit="carbs" type="number" inputmode="decimal" placeholder="Carbs g" value="${f.carbs_g || ""}">
             <input class="qa-input" data-edit="fat" type="number" inputmode="decimal" placeholder="Fat g" value="${f.fat_g || ""}">
           </div>
-          <input class="qa-input" data-edit="alcohol" type="number" inputmode="decimal" placeholder="Alcohol g (optional)" value="${f.alcohol_g || ""}" style="margin-top:8px;">
+          <div class="field-row" style="margin-top:8px;">
+            <input class="qa-input" data-edit="alcohol" type="number" inputmode="decimal" placeholder="Alcohol g (optional)" value="${f.alcohol_g || ""}">
+            <input class="qa-input" data-edit="fiber" type="number" inputmode="decimal" placeholder="Fiber g (optional)" value="${f.fiber_g || ""}">
+          </div>
           <div style="display:flex;gap:8px;margin-top:10px;">
             <button class="btn" style="margin-top:0;" data-action="save-food" data-id="${f.id}">Save</button>
             <button class="btn ghost" style="margin-top:0;" data-action="cancel-food">Cancel</button>
@@ -1522,6 +1710,7 @@ async function deleteFoodItem(id) {
     MACROS.protein.current = Math.max(0, MACROS.protein.current - (item.protein_g || 0));
     MACROS.carbs.current = Math.max(0, MACROS.carbs.current - (item.carbs_g || 0));
     MACROS.fat.current = Math.max(0, MACROS.fat.current - (item.fat_g || 0));
+    FIBER.current = Math.max(0, FIBER.current - (item.fiber_g || 0));
     food = food.filter(f => f.id !== id);
     renderRings();
     renderFood();
@@ -1537,19 +1726,21 @@ async function saveFoodEdit(id) {
   const carbs_g = Number(row.querySelector('[data-edit="carbs"]').value) || 0;
   const fat_g = Number(row.querySelector('[data-edit="fat"]').value) || 0;
   const alcohol_g = Number(row.querySelector('[data-edit="alcohol"]').value) || 0;
+  const fiber_g = Number(row.querySelector('[data-edit="fiber"]').value) || 0;
   const item = food.find(f => f.id === id);
   if (!item || !name) return;
-  const oldP = item.protein_g || 0, oldC = item.carbs_g || 0, oldF = item.fat_g || 0;
-  item.name = name; item.protein_g = protein_g; item.carbs_g = carbs_g; item.fat_g = fat_g; item.alcohol_g = alcohol_g;
+  const oldP = item.protein_g || 0, oldC = item.carbs_g || 0, oldF = item.fat_g || 0, oldFiber = item.fiber_g || 0;
+  item.name = name; item.protein_g = protein_g; item.carbs_g = carbs_g; item.fat_g = fat_g; item.alcohol_g = alcohol_g; item.fiber_g = fiber_g;
   MACROS.protein.current = Math.max(0, MACROS.protein.current + (protein_g - oldP));
   MACROS.carbs.current = Math.max(0, MACROS.carbs.current + (carbs_g - oldC));
   MACROS.fat.current = Math.max(0, MACROS.fat.current + (fat_g - oldF));
+  FIBER.current = Math.max(0, FIBER.current + (fiber_g - oldFiber));
   editingFoodId = null;
   renderRings();
   renderFood();
   if (LIVE) {
     try {
-      await sb.from("nutrition_log").update({ name, protein_g, carbs_g, fat_g, alcohol_g }).eq("id", id);
+      await sb.from("nutrition_log").update({ name, protein_g, carbs_g, fat_g, alcohol_g, fiber_g }).eq("id", id);
       showToast("Updated");
     } catch (e) { showToast("Couldn't save — check connection", true); }
   } else {
@@ -1648,7 +1839,7 @@ async function loadFoodItems() {
   } catch (e) { /* offline — cached FOOD_ITEMS (if any) stays in effect */ }
 }
 
-async function recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd, alcoholAdd) {
+async function recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd, alcoholAdd, fiberAdd) {
   if (!LIVE) return;
   try {
     const { data: { user } } = await sb.auth.getUser();
@@ -1656,11 +1847,11 @@ async function recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fa
     if (existing) {
       await sb.from("food_items").update({
         use_count: (existing.use_count || 1) + 1, last_used_at: new Date().toISOString(),
-        protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd, alcohol_g: alcoholAdd || 0, covers, had_shake: shake,
+        protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd, alcohol_g: alcoholAdd || 0, fiber_g: fiberAdd || 0, covers, had_shake: shake,
       }).eq("id", existing.id);
     } else {
       await sb.from("food_items").insert({
-        user_id: user.id, name, protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd, alcohol_g: alcoholAdd || 0,
+        user_id: user.id, name, protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd, alcohol_g: alcoholAdd || 0, fiber_g: fiberAdd || 0,
         covers, had_shake: shake, use_count: 1, last_used_at: new Date().toISOString(),
       });
     }
@@ -1694,7 +1885,9 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
   const known = exactMatch || fuzzyMatch;
 
   const alcoholInput = document.getElementById("alcoholInput");
+  const fiberInput = document.getElementById("fiberInput");
   let alcoholAdd = Number(alcoholInput.value) || 0;
+  let fiberAdd = Number(fiberInput.value) || 0;
 
   let proteinAdd, carbsAdd, fatAdd, macroSource, composedMeta;
   if (known) {
@@ -1702,8 +1895,9 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
     carbsAdd = Number(known.carbs_g) || 0;
     fatAdd = Number(known.fat_g) || 0;
     macroSource = exactMatch ? "saved" : "saved-fuzzy";
-    // a manually-typed alcohol amount always wins over whatever the saved preset had
+    // a manually-typed alcohol/fiber amount always wins over whatever the saved preset had
     if (!alcoholInput.value) alcoholAdd = Number(known.alcohol_g) || 0;
+    if (!fiberInput.value) fiberAdd = Number(known.fiber_g) || 0;
   } else {
     // local + synchronous — decomposes the text against our own ingredient/unit tables,
     // no network call, no third-party API, ever
@@ -1721,15 +1915,17 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
     }
   }
 
-  const newItem = { id: null, name, tags, shake, protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd, alcohol_g: alcoholAdd };
+  const newItem = { id: null, name, tags, shake, protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd, alcohol_g: alcoholAdd, fiber_g: fiberAdd };
   food.push(newItem);
   MACROS.protein.current += proteinAdd;
   MACROS.carbs.current += carbsAdd;
   MACROS.fat.current += fatAdd;
+  FIBER.current += fiberAdd;
   renderRings();
   renderFood();
   input.value = "";
   alcoholInput.value = "";
+  fiberInput.value = "";
   activeTags.clear();
   selectedFoodItem = null;
   document.querySelectorAll(".chip").forEach(c => c.className = "chip");
@@ -1741,7 +1937,7 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
       const { data: { user } } = await sb.auth.getUser();
       const { data: inserted, error } = await sb.from("nutrition_log").insert({
         user_id: user.id, name, date: nutritionDate, covers, had_shake: shake,
-        protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd, alcohol_g: alcoholAdd,
+        protein_g: proteinAdd, carbs_g: carbsAdd, fat_g: fatAdd, alcohol_g: alcoholAdd, fiber_g: fiberAdd,
       }).select().single();
       if (error) throw error;
       newItem.id = inserted.id;
@@ -1753,11 +1949,104 @@ document.getElementById("logFoodBtn").addEventListener("click", async () => {
           + (composedMeta.matchedCount < composedMeta.totalSegments ? ` (${composedMeta.matchedCount}/${composedMeta.totalSegments} items sized — rest skipped, check macros)` : " (tap to edit if off)")
         : "Logged" + dateSuffix + " — rough guess, tap to edit macros";
       showToast(toastMsg);
-      recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd, alcoholAdd);
+      recordFoodItemUsage(name, covers, shake, proteinAdd, carbsAdd, fatAdd, alcoholAdd, fiberAdd);
     } catch (e) { showToast("Couldn't save — check connection", true); }
   } else {
     newItem.id = "demo-" + Math.random().toString(36).slice(2);
     showToast("Logged (demo — not saved)");
+  }
+});
+
+document.getElementById("copyYesterdayBtn").addEventListener("click", async () => {
+  if (!LIVE) { showToast("Connect your account to copy a day"); return; }
+  const prev = new Date(nutritionDate + "T00:00:00");
+  prev.setDate(prev.getDate() - 1);
+  const prevStr = `${prev.getFullYear()}-${String(prev.getMonth()+1).padStart(2,"0")}-${String(prev.getDate()).padStart(2,"0")}`;
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    const { data: rows } = await sb.from("nutrition_log").select("*").eq("user_id", user.id).eq("date", prevStr);
+    if (!rows || !rows.length) { showToast(`Nothing logged for ${prevStr}`, true); return; }
+    const inserts = rows.map(r => ({
+      user_id: user.id, name: r.name, date: nutritionDate, covers: r.covers, had_shake: r.had_shake,
+      protein_g: r.protein_g, carbs_g: r.carbs_g, fat_g: r.fat_g, alcohol_g: r.alcohol_g, fiber_g: r.fiber_g,
+    }));
+    await sb.from("nutrition_log").insert(inserts);
+    await loadNutritionForDate(nutritionDate);
+    renderRings(); renderFood(); renderWater();
+    showToast(`Copied ${rows.length} item${rows.length === 1 ? "" : "s"} from ${prevStr}`);
+  } catch (e) { showToast("Couldn't copy — check connection", true); }
+});
+
+// ---------- hydration ----------
+function renderWater() {
+  document.getElementById("waterTotalDisplay").textContent = WATER_TOTAL + " ml today";
+  const pct = Math.min(100, Math.round((WATER_TOTAL / (WATER_TARGET || 3000)) * 100));
+  document.getElementById("waterBar").style.width = pct + "%";
+}
+document.querySelectorAll("[data-water]").forEach(chip => {
+  chip.addEventListener("click", async () => {
+    const ml = Number(chip.dataset.water);
+    WATER_TOTAL += ml;
+    renderWater();
+    if (!LIVE) { showToast(`+${ml} ml (demo — not saved)`); return; }
+    try {
+      const { data: { user } } = await sb.auth.getUser();
+      await sb.from("water_log").insert({ user_id: user.id, date: nutritionDate, ml });
+      showToast(`+${ml} ml logged`);
+    } catch (e) { WATER_TOTAL -= ml; renderWater(); showToast("Couldn't save — check connection", true); }
+  });
+});
+
+// ---------- supplements ----------
+function renderSupplements() {
+  const loggedNames = new Set(SUPPLEMENTS.map(s => s.name.toLowerCase()));
+  document.querySelectorAll("#supplementChipRow .chip").forEach(chip => {
+    chip.classList.toggle("on", loggedNames.has(chip.dataset.supp.toLowerCase()));
+  });
+  const list = document.getElementById("supplementList");
+  if (!SUPPLEMENTS.length) { list.innerHTML = ""; return; }
+  list.innerHTML = SUPPLEMENTS.map(s => `
+    <div class="food-item">
+      <div class="food-name">${escapeHtml(s.name)}</div>
+      <button class="food-icon-btn" data-action="delete-supp" data-id="${s.id}" title="Remove">${X_SVG}</button>
+    </div>`).join("");
+  list.querySelectorAll('[data-action="delete-supp"]').forEach(btn => btn.addEventListener("click", () => deleteSupplement(btn.dataset.id)));
+}
+async function logSupplement(name) {
+  name = name.trim();
+  if (!name) return;
+  if (!LIVE) { showToast("Logged (demo — not saved)"); return; }
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    const { data: inserted, error } = await sb.from("supplement_log")
+      .insert({ user_id: user.id, date: nutritionDate, name }).select().single();
+    if (error) throw error;
+    SUPPLEMENTS.push(inserted);
+    renderSupplements();
+    showToast(`Logged ${name}`);
+  } catch (e) { showToast("Couldn't save — check connection", true); }
+}
+async function deleteSupplement(id) {
+  SUPPLEMENTS = SUPPLEMENTS.filter(s => s.id !== id);
+  renderSupplements();
+  if (!LIVE) return;
+  try { await sb.from("supplement_log").delete().eq("id", id); }
+  catch (e) { showToast("Couldn't delete — check connection", true); }
+}
+document.querySelectorAll("#supplementChipRow .chip").forEach(chip => {
+  chip.addEventListener("click", () => {
+    const name = chip.dataset.supp;
+    const existing = SUPPLEMENTS.find(s => s.name.toLowerCase() === name.toLowerCase());
+    if (existing) deleteSupplement(existing.id);
+    else logSupplement(name);
+  });
+});
+const supplementInputEl = document.getElementById("supplementInput");
+supplementInputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    logSupplement(supplementInputEl.value);
+    supplementInputEl.value = "";
   }
 });
 
@@ -1853,6 +2142,85 @@ function renderBestLifts() {
     </div>`).join("");
 }
 
+// ---------- weekly volume by muscle group ----------
+let VOLUME_BY_GROUP = [];
+async function loadVolumeByGroup() {
+  if (!LIVE) { VOLUME_BY_GROUP = []; return; }
+  const { data: { user } } = await sb.auth.getUser();
+  const since = new Date(); since.setDate(since.getDate() - 6);
+  const sinceStr = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, "0")}-${String(since.getDate()).padStart(2, "0")}`;
+  const { data: sessions } = await sb.from("sessions").select("id").eq("user_id", user.id).gte("date", sinceStr);
+  const sessionIds = (sessions || []).map(s => s.id);
+  if (!sessionIds.length) { VOLUME_BY_GROUP = []; return; }
+  const { data: logs } = await sb.from("session_exercise_logs").select("*").in("session_id", sessionIds);
+  const exIds = [...new Set((logs || []).map(l => l.exercise_id).filter(Boolean))];
+  let groupById = {};
+  if (exIds.length) {
+    const { data: exRows } = await sb.from("exercises").select("id, muscle_group").in("id", exIds);
+    (exRows || []).forEach(e => { groupById[e.id] = e.muscle_group || "Other"; });
+  }
+  const totals = {};
+  (logs || []).forEach(l => {
+    const group = groupById[l.exercise_id] || "Other";
+    if (!l.actual) return;
+    l.actual.split(",").forEach(setStr => {
+      const p = parseSetStr(setStr.trim());
+      if (!p.split) return;
+      const w = parseFloat(p.weight), r = parseFloat(p.reps);
+      if (!isFinite(w) || !isFinite(r)) return;
+      totals[group] = (totals[group] || 0) + w * r;
+    });
+  });
+  VOLUME_BY_GROUP = Object.entries(totals).map(([group, volume]) => ({ group, volume: Math.round(volume) })).sort((a, b) => b.volume - a.volume);
+}
+function renderVolumeByGroup() {
+  const list = document.getElementById("volumeByGroupList");
+  if (!list) return;
+  if (!VOLUME_BY_GROUP.length) { list.innerHTML = '<div class="note-card" style="padding:0;">Log a few sessions and volume by muscle group will show up here.</div>'; return; }
+  const max = Math.max(...VOLUME_BY_GROUP.map(g => g.volume), 1);
+  list.innerHTML = VOLUME_BY_GROUP.map(g => `
+    <div class="lift-row">
+      <div class="lift-name" style="flex:0 0 90px;">${escapeHtml(g.group)}</div>
+      <div class="bar-track" style="flex:1;margin:0 10px;"><div class="bar-fill" style="width:${Math.round((g.volume / max) * 100)}%"></div></div>
+      <div class="lift-1rm" style="font-size:13px;">${g.volume.toLocaleString()}<span style="font-size:10px;font-weight:650;color:var(--text-muted);"> lb</span></div>
+    </div>`).join("");
+}
+
+// ---------- nutrition adherence trend (7 days, vs current targets) ----------
+let ADHERENCE = [];
+async function loadAdherence() {
+  if (!LIVE) { ADHERENCE = []; return; }
+  const { data: { user } } = await sb.auth.getUser();
+  const { data: targets } = await sb.from("daily_targets").select("*").eq("user_id", user.id).order("effective_date", { ascending: false }).limit(1);
+  const t = (targets && targets[0]) || {};
+  const pTarget = Number(t.protein_g) || 0, cTarget = Number(t.carbs_g) || 0, fTarget = Number(t.fat_g) || 0;
+  const { data: totals } = await sb.from("daily_nutrition_totals").select("*").eq("user_id", user.id).order("date", { ascending: false }).limit(7);
+  ADHERENCE = (totals || []).slice().reverse().map(r => {
+    const scores = [];
+    if (pTarget) scores.push(Math.min(1, (Number(r.protein_g) || 0) / pTarget));
+    if (cTarget) scores.push(Math.min(1, (Number(r.carbs_g) || 0) / cTarget));
+    if (fTarget) scores.push(Math.min(1, (Number(r.fat_g) || 0) / fTarget));
+    const pct = scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) : 0;
+    const d = new Date(r.date + "T00:00:00");
+    return { day: `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`, pct };
+  });
+}
+function renderAdherence() {
+  const wrap = document.getElementById("adherenceBars");
+  if (!wrap) return;
+  wrap.innerHTML = "";
+  if (!ADHERENCE.length) { wrap.innerHTML = '<div class="note-card" style="padding:0;">Log a few days of food and your adherence trend will show up here.</div>'; return; }
+  ADHERENCE.forEach(a => {
+    const col = document.createElement("div");
+    col.className = "chart-col";
+    col.innerHTML = `<div class="chart-bar ${a.pct === 0 ? "zero" : ""}" style="height:0%" data-target-h="${Math.max(4, a.pct)}" title="${a.pct}% of targets"></div><div class="chart-day">${a.day}</div>`;
+    wrap.appendChild(col);
+  });
+  requestAnimationFrame(() => {
+    wrap.querySelectorAll(".chart-bar").forEach(b => { b.style.height = b.dataset.targetH + "%"; });
+  });
+}
+
 // ---------- tabs ----------
 document.querySelectorAll(".tab-btn").forEach(btn => {
   btn.addEventListener("click", () => {
@@ -1860,11 +2228,11 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
     document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById("view-" + btn.dataset.tab).classList.add("active");
-    if (btn.dataset.tab === "progress") { renderChart(); renderBestLifts(); }
+    if (btn.dataset.tab === "progress") { renderChart(); renderBestLifts(); renderVolumeByGroup(); renderAdherence(); }
     if (btn.dataset.tab === "plan") renderPlan();
-    if (btn.dataset.tab === "profile") renderProfile();
+    if (btn.dataset.tab === "profile") { renderProfile(); renderBodyMetrics(); renderTdee(); }
     if (btn.dataset.tab === "workout") { renderWorkout(); updateWorkoutBar(); renderDayPicker(); }
-    if (btn.dataset.tab === "nutrition") { renderRings(); renderFood(); updateNutritionEyebrow(); }
+    if (btn.dataset.tab === "nutrition") { renderRings(); renderFood(); updateNutritionEyebrow(); renderWater(); renderSupplements(); }
   });
 });
 
@@ -1881,6 +2249,8 @@ function renderProfile() {
   document.getElementById("pfProtein").value = MACROS.protein.target || "";
   document.getElementById("pfCarbs").value = MACROS.carbs.target || "";
   document.getElementById("pfFat").value = MACROS.fat.target || "";
+  document.getElementById("pfFiber").value = FIBER.target || "";
+  document.getElementById("pfWaterTarget").value = WATER_TARGET || "";
   document.getElementById("pfGoalWeight").value = PROFILE.weight_target_lb || "";
   document.getElementById("pfTargetDate").value = PROFILE.target_date || "";
 
@@ -1929,21 +2299,117 @@ document.getElementById("saveGoalsBtn").addEventListener("click", async () => {
   const protein_g = Number(document.getElementById("pfProtein").value) || 0;
   const carbs_g = Number(document.getElementById("pfCarbs").value) || 0;
   const fat_g = Number(document.getElementById("pfFat").value) || 0;
+  const fiber_g = Number(document.getElementById("pfFiber").value) || 0;
+  const water_target_ml = document.getElementById("pfWaterTarget").value ? Number(document.getElementById("pfWaterTarget").value) : null;
   const weight_target_lb = document.getElementById("pfGoalWeight").value ? Number(document.getElementById("pfGoalWeight").value) : null;
   const target_date = document.getElementById("pfTargetDate").value || null;
   if (!LIVE) { showToast("Saved (demo — not synced)"); return; }
   try {
     const { data: { user } } = await sb.auth.getUser();
     await sb.from("daily_targets").insert({
-      user_id: user.id, effective_date: todayStr(), protein_g, carbs_g, fat_g, weight_target_lb, target_date,
+      user_id: user.id, effective_date: todayStr(), protein_g, carbs_g, fat_g, fiber_g, water_target_ml, weight_target_lb, target_date,
     });
     PROFILE.weight_target_lb = weight_target_lb; PROFILE.target_date = target_date;
     await loadNutritionForDate(nutritionDate);
     renderRings();
+    renderWater();
     renderProfile();
     showToast("Goals saved");
   } catch (e) { showToast("Couldn't save — check connection", true); }
 });
+
+// ---------- body metrics (weight / body composition) ----------
+const bmDateInput = document.getElementById("bmDateInput");
+bmDateInput.max = todayStr();
+bmDateInput.value = todayStr();
+
+async function loadBodyMetrics() {
+  if (!LIVE) { BODY_METRICS = []; return; }
+  const { data: { user } } = await sb.auth.getUser();
+  const { data } = await sb.from("body_metrics").select("*").eq("user_id", user.id).order("date", { ascending: false }).limit(20);
+  BODY_METRICS = data || [];
+}
+
+function renderBodyMetrics() {
+  const list = document.getElementById("bodyMetricsList");
+  if (!list) return;
+  if (!BODY_METRICS.length) { list.innerHTML = '<div class="note-card" style="padding:0;">No scans logged yet.</div>'; return; }
+  list.innerHTML = BODY_METRICS.map((m, i) => {
+    const prev = BODY_METRICS[i + 1]; // next-older entry (list is newest-first)
+    let deltaHtml = "";
+    if (prev && m.weight_lb != null && prev.weight_lb != null) {
+      const d = Math.round((Number(m.weight_lb) - Number(prev.weight_lb)) * 10) / 10;
+      if (d !== 0) deltaHtml = `<span style="color:${d < 0 ? "var(--status-good)" : "var(--text-muted)"};">${d > 0 ? "▲" : "▼"} ${Math.abs(d)} lb</span>`;
+    }
+    const parts = [];
+    if (m.weight_lb != null) parts.push(`${m.weight_lb} lb`);
+    if (m.percent_body_fat != null) parts.push(`${m.percent_body_fat}% BF`);
+    if (m.skeletal_muscle_mass_lb != null) parts.push(`${m.skeletal_muscle_mass_lb} lb SMM`);
+    if (m.bmi != null) parts.push(`BMI ${m.bmi}`);
+    return `
+      <div class="lift-row">
+        <div>
+          <div class="lift-name">${new Date(m.date + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}</div>
+          <div class="lift-detail">${parts.join(" · ") || "—"}</div>
+        </div>
+        <div class="lift-1rm" style="font-size:14px;">${deltaHtml}</div>
+      </div>`;
+  }).join("");
+}
+
+document.getElementById("logBodyMetricBtn").addEventListener("click", async () => {
+  const date = bmDateInput.value || todayStr();
+  if (date > todayStr()) { showToast("Can't log a scan for a future date", true); return; }
+  const weight_lb = document.getElementById("bmWeight").value ? Number(document.getElementById("bmWeight").value) : null;
+  const percent_body_fat = document.getElementById("bmBodyFat").value ? Number(document.getElementById("bmBodyFat").value) : null;
+  const skeletal_muscle_mass_lb = document.getElementById("bmMuscle").value ? Number(document.getElementById("bmMuscle").value) : null;
+  const bmi = document.getElementById("bmBmi").value ? Number(document.getElementById("bmBmi").value) : null;
+  if (weight_lb == null && percent_body_fat == null && skeletal_muscle_mass_lb == null && bmi == null) {
+    showToast("Enter at least one measurement", true); return;
+  }
+  if (!LIVE) { showToast("Logged (demo — not synced)"); return; }
+  const btn = document.getElementById("logBodyMetricBtn");
+  btn.disabled = true;
+  try {
+    const { data: { user } } = await sb.auth.getUser();
+    await sb.from("body_metrics").upsert({
+      user_id: user.id, date, weight_lb, percent_body_fat, skeletal_muscle_mass_lb, bmi,
+    }, { onConflict: "user_id,date" });
+    ["bmWeight", "bmBodyFat", "bmMuscle", "bmBmi"].forEach(id => document.getElementById(id).value = "");
+    await loadBodyMetrics();
+    renderBodyMetrics();
+    renderTdee();
+    showToast("Scan logged");
+  } catch (e) { showToast("Couldn't save — check connection", true); }
+  btn.disabled = false;
+});
+
+// ---------- estimated maintenance calories (TDEE) ----------
+// needs at least two body-weight entries spanning a real window, plus enough overlapping
+// logged nutrition days, or the estimate is too noisy to be worth showing at all
+async function renderTdee() {
+  const card = document.getElementById("tdeeCard");
+  const body = document.getElementById("tdeeBody");
+  if (!card || !body || !LIVE) { if (card) card.style.display = "none"; return; }
+  const withWeight = BODY_METRICS.filter(m => m.weight_lb != null).slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  if (withWeight.length < 2) { card.style.display = "none"; return; }
+  const first = withWeight[0], last = withWeight[withWeight.length - 1];
+  const days = (new Date(last.date) - new Date(first.date)) / 86400000;
+  if (days < 10) { card.style.display = "none"; return; }
+  const weightChange = Number(last.weight_lb) - Number(first.weight_lb);
+  const perWeek = weightChange / (days / 7);
+  const { data: { user } } = await sb.auth.getUser();
+  const { data } = await sb.from("daily_nutrition_totals").select("kcal, date")
+    .eq("user_id", user.id).gte("date", first.date).lte("date", last.date);
+  const rows = (data || []).filter(r => r.kcal != null);
+  if (rows.length < Math.min(5, Math.round(days * 0.4))) { card.style.display = "none"; return; }
+  const avgKcal = rows.reduce((a, r) => a + Number(r.kcal), 0) / rows.length;
+  // 3500 kcal ≈ 1 lb of body fat — a coarse but standard rule of thumb
+  const maintenance = Math.round((avgKcal - (weightChange / days) * 3500) / 25) * 25;
+  const trend = weightChange > 0.1 ? "gaining" : weightChange < -0.1 ? "losing" : "roughly maintaining";
+  card.style.display = "block";
+  body.innerHTML = `Over the last ${Math.round(days)} days you were ${trend} weight (${weightChange > 0 ? "+" : ""}${weightChange.toFixed(1)} lb, ${perWeek > 0 ? "+" : ""}${perWeek.toFixed(1)} lb/week) while averaging <b>${Math.round(avgKcal)} kcal/day</b> across ${rows.length} logged days. That puts your estimated maintenance around <b>${maintenance} kcal/day</b> — a rough estimate, not a lab measurement.`;
+}
 
 // ---------- toast ----------
 let toastTimer;
@@ -2105,17 +2571,20 @@ async function loadNutritionForDate(date) {
     .select("*").eq("user_id", user.id).order("effective_date", { ascending: false }).limit(1);
   const t = (targets && targets[0]) || { protein_g: 165, carbs_g: 380, fat_g: 70 };
 
-  const sums = { protein: 0, carbs: 0, fat: 0 };
+  const sums = { protein: 0, carbs: 0, fat: 0, fiber: 0 };
   (rows || []).forEach(r => {
     sums.protein += Number(r.protein_g) || 0;
     sums.carbs += Number(r.carbs_g) || 0;
     sums.fat += Number(r.fat_g) || 0;
+    sums.fiber += Number(r.fiber_g) || 0;
   });
   MACROS = {
     protein: { current: sums.protein, target: Number(t.protein_g) || 0, color: "var(--series-protein)" },
     carbs:   { current: sums.carbs,   target: Number(t.carbs_g) || 0,   color: "var(--series-carbs)" },
     fat:     { current: sums.fat,     target: Number(t.fat_g) || 0,     color: "var(--series-fat)" },
   };
+  FIBER = { current: sums.fiber, target: Number(t.fiber_g) || 0 };
+  WATER_TARGET = Number(t.water_target_ml) || 0;
   food = (rows || []).map(r => ({
     id: r.id,
     name: r.name,
@@ -2125,7 +2594,14 @@ async function loadNutritionForDate(date) {
     carbs_g: Number(r.carbs_g) || 0,
     fat_g: Number(r.fat_g) || 0,
     alcohol_g: Number(r.alcohol_g) || 0,
+    fiber_g: Number(r.fiber_g) || 0,
   }));
+
+  const { data: waterRows } = await sb.from("water_log").select("ml").eq("user_id", user.id).eq("date", date);
+  WATER_TOTAL = (waterRows || []).reduce((a, r) => a + (Number(r.ml) || 0), 0);
+
+  const { data: suppRows } = await sb.from("supplement_log").select("*").eq("user_id", user.id).eq("date", date).order("created_at");
+  SUPPLEMENTS = suppRows || [];
 }
 
 async function loadSessionsHistory() {
@@ -2175,7 +2651,10 @@ function updateNutritionEyebrow() {
 async function loadAll() {
   try {
     await loadProgram();
-    await Promise.all([loadNutritionForDate(nutritionDate), loadSessionsHistory(), computeStreak(), loadPlan(), loadFoodItems(), loadNutritionReference(), loadProfile(), loadBestLifts()]);
+    await Promise.all([
+      loadNutritionForDate(nutritionDate), loadSessionsHistory(), computeStreak(), loadPlan(), loadFoodItems(),
+      loadNutritionReference(), loadProfile(), loadBestLifts(), loadVolumeByGroup(), loadAdherence(), loadBodyMetrics(),
+    ]);
     setBanner("", false);
   } catch (e) {
     setBanner(`<b>Couldn't load your data.</b> ${e.message || "Check your connection and try again."}`, true);
@@ -2184,11 +2663,13 @@ async function loadAll() {
   updateWorkoutBar();
   renderRings();
   renderFood();
+  renderWater();
+  renderSupplements();
   renderDayPicker();
   updateNutritionEyebrow();
   if (document.getElementById("view-plan").classList.contains("active")) renderPlan();
-  if (document.getElementById("view-profile").classList.contains("active")) renderProfile();
-  if (document.getElementById("view-progress").classList.contains("active")) renderBestLifts();
+  if (document.getElementById("view-profile").classList.contains("active")) { renderProfile(); renderBodyMetrics(); renderTdee(); }
+  if (document.getElementById("view-progress").classList.contains("active")) { renderBestLifts(); renderVolumeByGroup(); renderAdherence(); }
 }
 
 const nutritionDateInput = document.getElementById("nutritionDateInput");
@@ -2200,8 +2681,10 @@ nutritionDateInput.addEventListener("change", async () => {
   nutritionDate = val;
   updateNutritionEyebrow();
   if (LIVE) {
-    try { await loadNutritionForDate(nutritionDate); renderRings(); renderFood(); }
-    catch (e) { showToast("Couldn't load that date", true); }
+    try {
+      await loadNutritionForDate(nutritionDate);
+      renderRings(); renderFood(); renderWater(); renderSupplements();
+    } catch (e) { showToast("Couldn't load that date", true); }
   }
 });
 
@@ -2220,8 +2703,18 @@ function obExerciseRowHtml() {
           <option value="MAIN" selected>Main</option>
           <option value="FINISHER">Finisher</option>
         </select>
-        <input class="qa-input" data-ob="ex-prescription" placeholder="40x12, 40x12, 35x15">
+        <select class="qa-input" data-ob="ex-muscle-group">
+          <option value="">Muscle group</option>
+          <option value="Chest">Chest</option>
+          <option value="Back">Back</option>
+          <option value="Shoulders">Shoulders</option>
+          <option value="Arms">Arms</option>
+          <option value="Legs">Legs</option>
+          <option value="Core">Core</option>
+          <option value="Other">Other</option>
+        </select>
       </div>
+      <input class="qa-input" data-ob="ex-prescription" placeholder="40x12, 40x12, 35x15" style="margin-top:8px;">
       <button class="set-remove" data-action="ob-remove-ex" type="button" title="Remove exercise">${X_SVG}</button>
     </div>`;
 }
@@ -2265,13 +2758,14 @@ function wireObDayListEvents(listEl) {
     }
   });
 }
-// reads one .ob-day-card element into {code, name, exercises:[{name,section,prescription}]}
+// reads one .ob-day-card element into {code, name, exercises:[{name,section,muscleGroup,prescription}]}
 function readObDayCard(card) {
   const code = card.querySelector('[data-ob="code"]').value.trim();
   const name = card.querySelector('[data-ob="name"]').value.trim();
   const exercises = [...card.querySelectorAll(".ob-ex-row")].map(row => ({
     name: row.querySelector('[data-ob="ex-name"]').value.trim(),
     section: row.querySelector('[data-ob="ex-section"]').value,
+    muscleGroup: row.querySelector('[data-ob="ex-muscle-group"]').value || null,
     prescription: row.querySelector('[data-ob="ex-prescription"]').value.trim(),
   })).filter(ex => ex.name);
   return { code, name, exercises };
@@ -2284,7 +2778,7 @@ async function insertWorkoutDay(day, sequenceOrder) {
     .select().single();
   if (dayErr) throw dayErr;
   const exRows = day.exercises.map((ex, idx) => ({
-    workout_day_id: dayRow.id, section: ex.section, name: ex.name, order_index: idx,
+    workout_day_id: dayRow.id, section: ex.section, name: ex.name, order_index: idx, muscle_group: ex.muscleGroup,
     cycles: ex.prescription ? [{ cycle: 1, prescription: ex.prescription }] : [],
   }));
   if (exRows.length) {
