@@ -1440,7 +1440,12 @@ function renderRings() {
       <div class="ring-target ${hit ? "hit" : ""}">${hit ? "Goal hit ✓" : remaining + "g left"}</div>`;
     row.appendChild(div);
   });
-  document.getElementById("statProtein").textContent = MACROS.protein.current + "g";
+  // "Protein today" on the Progress tab must reflect today specifically — MACROS
+  // tracks whatever date is being viewed on the Nutrition tab, which can be a past
+  // date the user is backfilling, so only overwrite the stat while viewing today.
+  if (nutritionDate === todayStr()) {
+    document.getElementById("statProtein").textContent = MACROS.protein.current + "g";
+  }
 
   // Calories are informational only — derived from the same logged macros (4/4/9
   // kcal per g of protein/carbs/fat) plus alcohol (7 kcal/g, tracked separately since
@@ -1767,14 +1772,14 @@ function renderPlan() {
     if (d.isToday) details.open = true;
     const exHtml = d.exercises.map(e => `
       <div class="plan-ex">
-        <div class="plan-ex-name">${e.name}</div>
-        <div class="plan-ex-sets">${e.sets.join(" · ") || "—"}</div>
+        <div class="plan-ex-name">${escapeHtml(e.name)}</div>
+        <div class="plan-ex-sets">${escapeHtml(e.sets.join(" · ")) || "—"}</div>
       </div>`).join("");
     details.innerHTML = `
       <summary>
-        <div class="plan-code">${d.code}</div>
+        <div class="plan-code">${escapeHtml(d.code)}</div>
         <div class="plan-summary-text">
-          <div class="plan-day-name">${d.name}${d.isToday ? '<span class="today-pill">Today</span>' : ''}</div>
+          <div class="plan-day-name">${escapeHtml(d.name)}${d.isToday ? '<span class="today-pill">Today</span>' : ''}</div>
           <div class="plan-cycle">${d.cycleLabel} · ${d.exercises.length} exercises</div>
         </div>
         <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
