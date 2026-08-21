@@ -963,9 +963,54 @@ function findUnitGrams(unitWord, category) {
   return row ? Number(row.grams_per_unit) : null;
 }
 
+// spelled-out counts ("two eggs", "a banana", "half a cup") never matched the
+// leading-digit regex below and got silently dropped — normalize them to digits first
+const WORD_NUMBERS = { quarter: "0.25", one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", half: "0.5", a: "1", an: "1" };
+function normalizeWordNumbers(text) {
+  return String(text)
+    .replace(/\bhalf an?\b/gi, "0.5")
+    .replace(/\b(quarter|one|two|three|four|five|six|half|a|an)\b/gi, w => WORD_NUMBERS[w.toLowerCase()] || w);
+}
+
+// splits a free-typed food description into one chunk per quantity mentioned.
+// paren-aware (so "(kidney beans, black eyed peas)" isn't shredded by its own
+// internal comma) and also breaks runs like "2 cups rice 180g salmon" wherever a
+// second "<number> <unit-word>" appears, even with no punctuation between items —
+// otherwise a whole ingredient silently vanishes into whichever one wins the fuzzy
+// match on the combined text.
+function splitFoodSegments(text) {
+  const str = normalizeWordNumbers(text);
+  let masked = "", depth = 0;
+  for (const ch of str) {
+    if (ch === "(") depth++;
+    if (ch === ")") depth = Math.max(0, depth - 1);
+    masked += (ch === "," && depth > 0) ? " " : ch;
+  }
+  const topSegments = masked.split(/,|\band\b|\+/i).map(s => s.trim()).filter(Boolean);
+
+  // a cut point requires digits followed by an actual unit word (letters) — this
+  // deliberately skips over things like "2%" so they stay embedded in their segment
+  // rather than being mistaken for a new item
+  const subQtyRe = /([\d.\/]+)\s*([a-zA-Z]+)/g;
+  const out = [];
+  topSegments.forEach(seg => {
+    const cuts = [];
+    let m;
+    subQtyRe.lastIndex = 0;
+    while ((m = subQtyRe.exec(seg))) cuts.push(m.index);
+    if (cuts.length <= 1) { out.push(seg); return; }
+    cuts.forEach((idx, i) => {
+      const end = i + 1 < cuts.length ? cuts[i + 1] : seg.length;
+      const piece = seg.slice(idx, end).trim();
+      if (piece) out.push(piece);
+    });
+  });
+  return out;
+}
+
 // entirely synchronous/local — no network call, so there's no loading state to show
 function estimateMacrosFromIngredients(text) {
-  const segments = String(text).split(/,|\band\b|\+/i).map(s => s.trim()).filter(Boolean);
+  const segments = splitFoodSegments(text);
   let protein = 0, carbs = 0, fat = 0, alcohol = 0, resolved = 0;
   const matchedNames = [];
   segments.forEach(seg => {
