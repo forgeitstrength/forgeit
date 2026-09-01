@@ -2669,8 +2669,11 @@ async function computeStreak() {
     sb.from("nutrition_log").select("date").eq("user_id", user.id),
   ]);
   const dates = new Set([...(sess||[]).map(r=>r.date), ...(food||[]).map(r=>r.date)]);
-  let streak = 0;
+  // a streak alive from yesterday shouldn't drop to 0 the instant a new day starts —
+  // only count it broken once a full day has passed with nothing logged at all
   let d = new Date();
+  if (!dates.has(todayStr())) d.setDate(d.getDate() - 1);
+  let streak = 0;
   while (true) {
     const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
     if (dates.has(key)) { streak++; d.setDate(d.getDate()-1); } else break;
