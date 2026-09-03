@@ -1154,7 +1154,15 @@ function foodNameMatchScore(a, b) {
 const FOOD_MATCH_FUZZY_THRESHOLD = 0.7;
 function findFuzzyFoodMatch(name) {
   let best = null, bestScore = 0;
+  const nameTokenCount = new Set(tokenizeFoodName(name)).size;
   FOOD_ITEMS.forEach(f => {
+    // the overlap-coefficient score above hits a perfect 1.0 whenever one whole
+    // side's tokens are a subset of the other's — harmless for a genuine shorter
+    // retyping of the same meal, but a single shared staple word ("rice",
+    // "chicken") let an old one-ingredient preset silently swallow an entirely
+    // different, more complex meal and hand back its macros. Require at least
+    // 2 tokens on both sides before a whole-meal reuse match is trusted.
+    if (Math.min(nameTokenCount, new Set(tokenizeFoodName(f.name)).size) < 2) return;
     const score = foodNameMatchScore(name, f.name);
     if (score > bestScore) { bestScore = score; best = f; }
   });
