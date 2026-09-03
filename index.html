@@ -198,6 +198,14 @@
   .ex-done-badge svg { width: 12px; height: 12px; }
   .ex-body { padding-top: 4px; }
   .ex-body .ex-note { margin-top: 2px; }
+  .ex-video-link {
+    display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 650;
+    color: var(--accent); background: none; border: none; font-family: inherit; cursor: pointer;
+    padding: 0 0 8px; margin: 0;
+  }
+  .ex-video-link svg { width: 13px; height: 13px; flex-shrink: 0; }
+  .ex-video-frame { position: relative; width: 100%; padding-top: 56.25%; margin-bottom: 10px; border-radius: 10px; overflow: hidden; background: #000; }
+  .ex-video-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
 
   /* workout-complete celebration */
   .celebrate-wrap { text-align: center; padding: 8px 4px 4px; }
@@ -1185,6 +1193,43 @@ function formatSetStr(weight, reps, split) {
 }
 const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L19 7"/></svg>';
 const X_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+const PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+
+// ---------- per-exercise "watch form" video ----------
+// turns a plain YouTube watch/share URL into its privacy-enhanced embeddable form;
+// a non-YouTube URL (e.g. the search-results fallback used when no specific video
+// could be verified) can't be embedded, so callers open those in a new tab instead
+function youtubeEmbedUrl(url) {
+  if (!url) return null;
+  let u;
+  try { u = new URL(url); } catch (e) { return null; }
+  let id = null;
+  if (/(^|\.)youtu\.be$/.test(u.hostname)) id = u.pathname.slice(1);
+  else if (/(^|\.)youtube(-nocookie)?\.com$/.test(u.hostname)) {
+    if (u.pathname === "/watch") id = u.searchParams.get("v");
+    else if (u.pathname.startsWith("/embed/")) id = u.pathname.split("/")[2];
+  }
+  return id ? `https://www.youtube-nocookie.com/embed/${id}` : null;
+}
+function wireExerciseVideoLinks(root) {
+  root.querySelectorAll(".ex-video-link").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const frame = btn.nextElementSibling;
+      const embed = youtubeEmbedUrl(btn.dataset.video);
+      if (!embed) { window.open(btn.dataset.video, "_blank", "noopener"); return; }
+      const isOpen = !frame.hidden;
+      frame.hidden = isOpen;
+      frame.innerHTML = isOpen ? "" : `<iframe src="${embed}" title="Exercise form video" allow="encrypted-media; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
+      btn.querySelector(".ex-video-label").textContent = isOpen ? "Watch form" : "Hide video";
+    });
+  });
+}
+function exerciseVideoHtml(videoUrl) {
+  if (!videoUrl) return "";
+  return `<button class="ex-video-link" data-video="${escapeHtml(videoUrl)}" type="button">${PLAY_SVG}<span class="ex-video-label">Watch form</span></button>
+    <div class="ex-video-frame" hidden></div>`;
+}
 
 // a completed workout that was already logged today stays pinned (no auto-jump to
 // tomorrow's session) and shows a celebration screen instead of the editable set list,
@@ -1326,6 +1371,7 @@ function renderWorkout() {
 
     let bodyHtml = "";
     if (g.note) bodyHtml += `<div class="ex-note">${escapeHtml(g.note)}</div>`;
+    bodyHtml += exerciseVideoHtml(g.videoUrl);
     const anySplit = g.sets.some(s => parseSetStr(s).split);
     if (anySplit) {
       bodyHtml += `<div class="set-col-labels"><div class="set-num"></div><div class="chk"></div>
@@ -1369,6 +1415,7 @@ function renderWorkout() {
     list.appendChild(details);
   });
 
+  wireExerciseVideoLinks(list);
   list.querySelectorAll(".chk-toggle").forEach(chk => {
     chk.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -2113,9 +2160,12 @@ function renderPlan() {
     details.className = "plan-card" + (d.isToday ? " is-today" : "");
     if (d.isToday) details.open = true;
     const exHtml = d.exercises.map(e => `
-      <div class="plan-ex">
-        <div class="plan-ex-name">${escapeHtml(e.name)}</div>
-        <div class="plan-ex-sets">${escapeHtml(e.sets.join(" · ")) || "—"}</div>
+      <div>
+        <div class="plan-ex">
+          <div class="plan-ex-name">${escapeHtml(e.name)}</div>
+          <div class="plan-ex-sets">${escapeHtml(e.sets.join(" · ")) || "—"}</div>
+        </div>
+        ${exerciseVideoHtml(e.videoUrl)}
       </div>`).join("");
     details.innerHTML = `
       <summary>
@@ -2130,6 +2180,7 @@ function renderPlan() {
     `;
     wrap.appendChild(details);
   });
+  wireExerciseVideoLinks(wrap);
 }
 
 // ---------- progress tab chart ----------
@@ -2548,7 +2599,7 @@ async function loadProgram(dayIdOverride, cycleOverride) {
 
   const groups = exercises.map(ex => {
     const cyc = (ex.cycles || []).find(c => c.cycle === cycleForLookup) || (ex.cycles || [])[0] || { prescription: "" };
-    return { id: ex.id, name: ex.name, note: "", sets: cyc.prescription ? cyc.prescription.split(",").map(s => s.trim()) : [] };
+    return { id: ex.id, name: ex.name, note: "", videoUrl: ex.video_url || null, sets: cyc.prescription ? cyc.prescription.split(",").map(s => s.trim()) : [] };
   });
 
   currentWorkoutDayId = nextDay.id;
@@ -2610,7 +2661,7 @@ async function loadPlan() {
       cycleLabel: `Cycle ${nextCycle} of ${maxCycle}`,
       exercises: exs.map(e => {
         const cyc = (e.cycles || []).find(c => c.cycle === nextCycle) || (e.cycles || [])[0] || { prescription: "" };
-        return { name: e.name, sets: cyc.prescription ? cyc.prescription.split(",").map(s => s.trim()) : [] };
+        return { name: e.name, videoUrl: e.video_url || null, sets: cyc.prescription ? cyc.prescription.split(",").map(s => s.trim()) : [] };
       }),
     };
   });
