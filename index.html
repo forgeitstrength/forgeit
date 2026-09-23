@@ -198,6 +198,24 @@
   .ex-done-badge svg { width: 12px; height: 12px; }
   .ex-body { padding-top: 4px; }
   .ex-body .ex-note { margin-top: 2px; }
+  .ex-note-callout {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; margin-bottom: 10px; font-size: 13px; color: var(--text-secondary); line-height: 1.5;
+  }
+  .ex-info { margin-bottom: 2px; }
+  .ex-info-summary {
+    list-style: none; display: flex; align-items: center; gap: 5px; cursor: pointer;
+    font-size: 12px; font-weight: 650; color: var(--accent); padding: 2px 0 8px; user-select: none;
+  }
+  .ex-info-summary::-webkit-details-marker { display: none; }
+  .ex-info-summary .chev-mini { width: 12px; height: 12px; flex-shrink: 0; transition: transform .15s ease; }
+  .ex-info[open] .ex-info-summary .chev-mini { transform: rotate(90deg); }
+  .ex-info-body { padding-bottom: 4px; }
+  .ex-equipment {
+    display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--text-secondary);
+    margin-bottom: 10px; line-height: 1.4;
+  }
+  .ex-equipment svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--text-muted); }
   .ex-video-link {
     display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 650;
     color: var(--accent); background: none; border: none; font-family: inherit; cursor: pointer;
@@ -329,15 +347,18 @@
   .day-picker-row::-webkit-scrollbar { display: none; }
   .day-pill {
     flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 2px;
-    padding: 7px 12px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface-2);
-    cursor: pointer; min-width: 46px;
+    padding: 7px 10px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface-2);
+    cursor: pointer; min-width: 60px;
   }
   .day-pill.suggested { border-color: var(--accent); }
   .day-pill.active { background: var(--accent); border-color: var(--accent); }
   .day-pill.active .day-pill-code, .day-pill.active .day-pill-name { color: #fff; }
   .day-pill.inactive-day { opacity: .55; }
   .day-pill-code { font-size: 13px; font-weight: 700; color: var(--text-primary); }
-  .day-pill-name { font-size: 9px; font-weight: 600; color: var(--text-muted); text-align: center; line-height: 1.2; white-space: nowrap; }
+  .day-pill-name {
+    font-size: 9px; font-weight: 600; color: var(--text-muted); text-align: center; line-height: 1.2;
+    white-space: nowrap; max-width: 68px; overflow: hidden; text-overflow: ellipsis;
+  }
   .cycle-row { display: flex; align-items: center; gap: 8px; }
   .cycle-btn {
     width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--border); background: var(--surface-2);
@@ -1238,6 +1259,27 @@ function exerciseVideoHtml(videoUrl) {
   return `<button class="ex-video-link" data-video="${escapeHtml(videoUrl)}" type="button">${PLAY_SVG}<span class="ex-video-label">Watch form</span></button>
     <div class="ex-video-frame" hidden></div>`;
 }
+const DUMBBELL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 6.5v11M17.5 6.5v11M2 9.5v5M22 9.5v5M4 12h16"/></svg>';
+const INFO_CHEV_SVG = '<svg class="chev-mini" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>';
+
+// WARM-UP/FINISHER rows carry the actual instructions in their note — show that
+// straight, no toggle. A regular exercise's equipment + video are secondary to its
+// sets, so those live behind a collapsed "Details" toggle to keep the set list clean.
+function exerciseDetailsHtml(g) {
+  const isSpecial = g.name === "WARM-UP" || /^FINISHER/i.test(g.name || "");
+  if (isSpecial) {
+    return g.note ? `<div class="ex-note-callout">${escapeHtml(g.note)}</div>` : "";
+  }
+  if (!g.note && !g.equipment && !g.videoUrl) return "";
+  let inner = "";
+  if (g.note) inner += `<div class="ex-note">${escapeHtml(g.note)}</div>`;
+  if (g.equipment) inner += `<div class="ex-equipment">${DUMBBELL_SVG}<span>${escapeHtml(g.equipment)}</span></div>`;
+  inner += exerciseVideoHtml(g.videoUrl);
+  return `<details class="ex-info">
+    <summary class="ex-info-summary">${INFO_CHEV_SVG}Details</summary>
+    <div class="ex-info-body">${inner}</div>
+  </details>`;
+}
 
 // a completed workout that was already logged today stays pinned (no auto-jump to
 // tomorrow's session) and shows a celebration screen instead of the editable set list,
@@ -1384,8 +1426,7 @@ function renderWorkout() {
     if (isOpen) details.open = true;
 
     let bodyHtml = "";
-    if (g.note) bodyHtml += `<div class="ex-note">${escapeHtml(g.note)}</div>`;
-    bodyHtml += exerciseVideoHtml(g.videoUrl);
+    bodyHtml += exerciseDetailsHtml(g);
     const anySplit = g.sets.some(s => parseSetStr(s).split);
     if (anySplit) {
       bodyHtml += `<div class="set-col-labels"><div class="set-num"></div><div class="chk"></div>
@@ -1669,7 +1710,7 @@ function renderDayPicker() {
   row.innerHTML = DAY_OPTIONS.map(d => `
     <div class="day-pill ${d.id === selectedDayId ? "active" : ""} ${d.id === suggestedDayId && d.id !== selectedDayId ? "suggested" : ""} ${!d.active ? "inactive-day" : ""}" data-day-id="${d.id}" title="${d.id === suggestedDayId ? suggestedTitle : ""}">
       <div class="day-pill-code">${d.code}</div>
-      <div class="day-pill-name">${escapeHtml((d.name || "").split(" ")[0])}</div>
+      <div class="day-pill-name" title="${escapeHtml(d.name || "")}">${escapeHtml(d.name || "")}</div>
     </div>`).join("");
   row.querySelectorAll(".day-pill").forEach(p => {
     p.addEventListener("click", async () => {
@@ -2182,7 +2223,7 @@ function renderPlan() {
           <div class="plan-ex-name">${escapeHtml(e.name)}</div>
           <div class="plan-ex-sets">${escapeHtml(e.sets.join(" · ")) || "—"}</div>
         </div>
-        ${exerciseVideoHtml(e.videoUrl)}
+        ${exerciseDetailsHtml(e)}
       </div>`).join("");
     details.innerHTML = `
       <summary>
@@ -2616,7 +2657,7 @@ async function loadProgram(dayIdOverride, cycleOverride) {
 
   const groups = exercises.map(ex => {
     const cyc = (ex.cycles || []).find(c => c.cycle === cycleForLookup) || (ex.cycles || [])[0] || { prescription: "" };
-    return { id: ex.id, name: ex.name, note: "", videoUrl: ex.video_url || null, sets: cyc.prescription ? cyc.prescription.split(",").map(s => s.trim()) : [] };
+    return { id: ex.id, name: ex.name, note: ex.notes || "", equipment: ex.equipment || null, videoUrl: ex.video_url || null, sets: cyc.prescription ? cyc.prescription.split(",").map(s => s.trim()) : [] };
   });
 
   currentWorkoutDayId = nextDay.id;
@@ -2680,7 +2721,7 @@ async function loadPlan() {
       cycleLabel: `Cycle ${nextCycle} of ${maxCycle}`,
       exercises: exs.map(e => {
         const cyc = (e.cycles || []).find(c => c.cycle === nextCycle) || (e.cycles || [])[0] || { prescription: "" };
-        return { name: e.name, videoUrl: e.video_url || null, sets: cyc.prescription ? cyc.prescription.split(",").map(s => s.trim()) : [] };
+        return { name: e.name, note: e.notes || "", equipment: e.equipment || null, videoUrl: e.video_url || null, sets: cyc.prescription ? cyc.prescription.split(",").map(s => s.trim()) : [] };
       }),
     };
   });
