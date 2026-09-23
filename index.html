@@ -608,6 +608,12 @@
 
       <div id="exerciseList"></div>
 
+      <div class="field-label" style="margin-top:18px;">Notes for today (optional)</div>
+      <textarea class="qa-input" id="sessionGeneralNoteInput" rows="2" style="margin-top:6px;resize:vertical;" placeholder="How did it feel? Anything worth remembering..."></textarea>
+
+      <div class="field-label">Something off today? (optional)</div>
+      <textarea class="qa-input" id="sessionIssueNoteInput" rows="2" style="margin-top:6px;resize:vertical;" placeholder="Sore shoulder, short on time, traveling... — flags today as a one-off, skipped when next weights auto-progress"></textarea>
+
       <button class="btn" id="finishBtn">Save workout</button>
     </div>
   </div>
@@ -1127,6 +1133,8 @@ let suggestedDayId = null;  // what the auto-rotation would have picked
 let sessionDate = todayStr();    // date a finished workout gets logged under
 let nutritionDate = todayStr();  // date being viewed/logged in the nutrition card
 let celebrationDismissed = false;  // user tapped "edit today's sets" after finishing
+let sessionGeneralNoteValue = "";  // free-form journal entry for the session currently shown
+let sessionIssueNoteValue = "";    // "something's off" flag — excludes today from auto-progression
 let groupOpenState = {};           // per-exercise MANUAL collapse override, keyed by exercise id (or index) — only set when the user taps a header; unset groups auto-collapse once complete
 let BEST_LIFTS = [];
 
@@ -1345,9 +1353,15 @@ window.addEventListener("pagehide", () => {
   if (currentWorkoutDayId) { commitAllVisibleSetRows(); saveWorkoutDraft(); }
 });
 
+function renderSessionNotes() {
+  document.getElementById("sessionGeneralNoteInput").value = sessionGeneralNoteValue;
+  document.getElementById("sessionIssueNoteInput").value = sessionIssueNoteValue;
+}
+
 function renderWorkout() {
   document.getElementById("workoutTitle").textContent = WORKOUT.title;
   document.getElementById("workoutSub").textContent = WORKOUT.cycle + (WORKOUT.sub ? " · " + WORKOUT.sub : "");
+  renderSessionNotes();
 
   const showCelebration = !!WORKOUT.finishedToday && !celebrationDismissed;
   document.getElementById("workoutCelebration").style.display = showCelebration ? "block" : "none";
@@ -1604,12 +1618,15 @@ document.getElementById("finishBtn").addEventListener("click", async () => {
   if (LIVE) {
     try {
       const { data: { user } } = await sb.auth.getUser();
+      const generalNote = document.getElementById("sessionGeneralNoteInput").value.trim();
+      const issueNote = document.getElementById("sessionIssueNoteInput").value.trim();
       // one row per (user, day, cycle, date) — upsert so a re-save (or an accidental
       // double-tap) updates that same row instead of creating a duplicate session
       const { data: sessionRow, error: sErr } = await sb.from("sessions")
         .upsert({
           user_id: user.id, workout_day_id: currentWorkoutDayId, cycle_number: currentCycleNumber,
           date: sessionDate, sets_completed: done, sets_total: total,
+          general_note: generalNote || null, issue_note: issueNote || null,
         }, { onConflict: "user_id,workout_day_id,cycle_number,date" })
         .select().single();
       if (sErr) throw sErr;
@@ -2627,6 +2644,8 @@ async function loadProgram(dayIdOverride, cycleOverride) {
   // whatever's unchecked stayed skipped on purpose (out of time, fatigued, etc.) and
   // is never force-completed.
   WORKOUT = { title: `${nextDay.code} · ${nextDay.name}`, cycle: `Cycle ${cycleForLookup} of ${maxCycle}`, groups, maxCycle, finishedToday: alreadyDoneToday, pinnedToday: alreadyDoneToday };
+  sessionGeneralNoteValue = alreadyDoneToday ? (lastSession.general_note || "") : "";
+  sessionIssueNoteValue = alreadyDoneToday ? (lastSession.issue_note || "") : "";
 
   // pull back any weights/reps/checks typed since the last save that never made it to
   // Supabase (e.g. the phone got locked mid-set) — only for this exact day/cycle/date
