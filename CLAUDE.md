@@ -66,9 +66,11 @@ or via parent FK for `exercises`/`session_exercise_logs`). Reference tables
   name, order_index, cycles (jsonb), muscle_group, video_url, notes,
   equipment`.
   - `cycles` is `[{ "cycle": 1, "prescription": "45 x 12, 45 x 10" }, ...]`.
-    Cycle numbers loop (`((n-1) % maxCycle) + 1`) — cycle_number stored on
-    `sessions` keeps incrementing forever, but only maps onto a fixed set
-    of prescription slots per exercise.
+    The next cycle number is computed by incrementing the day's last stored
+    value, then wrapping it into `1...maxCycle` (`((n-1) % maxCycle) + 1`)
+    *before* it's saved — so `sessions.cycle_number` itself always cycles
+    1,2,3,4,1,2,... (confirmed against live data), it never grows unbounded.
+    Only the intermediate "what's next" computation is unbounded.
   - `notes` holds the actual instructions for WARM-UP/FINISHER rows
     (rendered as a prominent callout, not collapsed) and is otherwise
     unused for MAIN rows today.
