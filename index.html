@@ -1153,7 +1153,9 @@ let selectedCycle = 1;      // cycle currently shown for that day
 let suggestedDayId = null;  // what the auto-rotation would have picked
 let sessionDate = todayStr();    // date a finished workout gets logged under
 let nutritionDate = todayStr();  // date being viewed/logged in the nutrition card
-let celebrationDismissed = false;  // user tapped "edit today's sets" after finishing
+let celebrationDismissed = true;  // true = show the editable set list by default; only flips
+                                   // false for one render right after a fresh "Save workout"
+                                   // tap, so the reward screen doesn't re-lock every re-open
 let sessionGeneralNoteValue = "";  // free-form journal entry for the session currently shown
 let sessionIssueNoteValue = "";    // "something's off" flag — excludes today from auto-progression
 let groupOpenState = {};           // per-exercise MANUAL collapse override, keyed by exercise id (or index) — only set when the user taps a header; unset groups auto-collapse once complete
@@ -1685,7 +1687,9 @@ document.getElementById("finishBtn").addEventListener("click", async () => {
       loadSessionsHistory();
       if (sessionDate === todayStr()) {
         // re-pin the view to today's (now-logged) session instead of jumping ahead,
-        // and let the celebration screen show if everything got checked off
+        // and show the celebration screen once as a reward for this save (it won't
+        // re-lock the editable set list on a later reopen — see loadProgram)
+        celebrationDismissed = false;
         await loadProgram();
         await loadPlan();
         renderWorkout();
@@ -1739,10 +1743,21 @@ document.getElementById("cycleNextBtn").addEventListener("click", () => stepCycl
 const sessionDateInput = document.getElementById("sessionDateInput");
 sessionDateInput.max = todayStr();
 sessionDateInput.value = sessionDate;
-sessionDateInput.addEventListener("change", () => {
+sessionDateInput.addEventListener("change", async () => {
   let val = sessionDateInput.value || todayStr();
   if (val > todayStr()) { val = todayStr(); sessionDateInput.value = val; showToast("Can't log a workout for a future date", true); }
   sessionDate = val;
+  try {
+    if (val === todayStr()) {
+      await loadProgram();
+    } else {
+      const found = await loadLoggedSessionForDate(val);
+      if (!found) { showToast("Nothing logged for that date yet — editing will log under it"); return; }
+    }
+    renderWorkout();
+    updateWorkoutBar();
+    renderDayPicker();
+  } catch (e) { showToast("Couldn't load that date", true); }
 });
 
 // ---------- rings ----------
@@ -2676,7 +2691,11 @@ async function loadProgram(dayIdOverride, cycleOverride) {
       if (log.actual) groups[gi].sets = log.actual.split(",").map(s => s.trim());
       if (log.completed) groups[gi].sets.forEach((s, si) => { checked[gi + "-" + si] = true; });
     });
-    celebrationDismissed = false;
+    // NOTE: celebrationDismissed is deliberately left untouched here — forcing it to
+    // false on every load used to re-lock the editable set list (hiding add/remove-set)
+    // behind the celebration screen every single time the app reopened on an
+    // already-logged day. It now only flips on an actual fresh "Save workout" tap
+    // (see the finishBtn handler), so re-opening the app always lands on the editable view.
     groupOpenState = {}; // fresh collapse state for the (now current) actual sets
   }
 
@@ -2691,6 +2710,55 @@ async function loadProgram(dayIdOverride, cycleOverride) {
   // pull back any weights/reps/checks typed since the last save that never made it to
   // Supabase (e.g. the phone got locked mid-set) — only for this exact day/cycle/date
   restoreWorkoutDraftIfMatching();
+}
+
+// Loads whatever was actually logged on a specific past date (picked via the date
+// input), so backing up to "yesterday" shows the real exercises/weights/reps instead
+// of today's unrelated next-up day — previously there was no way to see a past day's
+// log again once the rotation moved on, even though it was never deleted from Supabase.
+// Returns false (leaving the current view untouched) when nothing was logged that day.
+async function loadLoggedSessionForDate(date) {
+  const { data: { user } } = await sb.auth.getUser();
+  const { data: rows } = await sb.from("sessions")
+    .select("*").eq("user_id", user.id).eq("date", date).limit(1);
+  const session = rows && rows[0];
+  if (!session) return false;
+
+  const { data: exercises, error: eErr } = await sb.from("exercises")
+    .select("*").eq("workout_day_id", session.workout_day_id).order("order_index");
+  if (eErr || !exercises) return false;
+
+  const day = DAY_OPTIONS.find(d => d.id === session.workout_day_id);
+  const maxCycle = Math.max(1, ...exercises.flatMap(ex => (ex.cycles || []).map(c => c.cycle)));
+  const groups = exercises.map(ex => {
+    const cyc = (ex.cycles || []).find(c => c.cycle === session.cycle_number) || (ex.cycles || [])[0] || { prescription: "" };
+    return { id: ex.id, name: ex.name, note: ex.notes || "", equipment: ex.equipment || null, videoUrl: ex.video_url || null, sets: cyc.prescription ? cyc.prescription.split(",").map(s => s.trim()) : [] };
+  });
+
+  checked = {};
+  const { data: logs } = await sb.from("session_exercise_logs").select("*").eq("session_id", session.id);
+  (logs || []).forEach(log => {
+    const gi = groups.findIndex(gr => gr.id === log.exercise_id);
+    if (gi === -1) return;
+    if (log.actual) groups[gi].sets = log.actual.split(",").map(s => s.trim());
+    if (log.completed) groups[gi].sets.forEach((s, si) => { checked[gi + "-" + si] = true; });
+  });
+
+  currentWorkoutDayId = session.workout_day_id;
+  currentCycleNumber = session.cycle_number;
+  selectedDayId = session.workout_day_id;
+  selectedCycle = session.cycle_number;
+  groupOpenState = {};
+  // never gate a past date behind the celebration screen — that's only a "just
+  // finished today" reward, irrelevant when reviewing/editing an earlier log
+  WORKOUT = {
+    title: day ? `${day.code} · ${day.name}` : "Logged workout",
+    cycle: `Cycle ${session.cycle_number} of ${maxCycle}`,
+    groups, maxCycle, finishedToday: false, pinnedToday: false,
+  };
+  sessionGeneralNoteValue = session.general_note || "";
+  sessionIssueNoteValue = session.issue_note || "";
+  return true;
 }
 
 async function loadPlan() {
