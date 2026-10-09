@@ -122,18 +122,31 @@ private struct ExerciseGroupCard: View {
                     .font(.footnote.bold())
                 }
 
-                ForEach($group.sets) { $set in
+                ForEach(group.sets) { set in
                     HStack {
                         Button {
-                            set.checked.toggle()
+                            if let si = group.sets.firstIndex(where: { $0.id == set.id }) {
+                                group.sets[si].checked.toggle()
+                            }
                         } label: {
                             Image(systemName: set.checked ? "checkmark.circle.fill" : "circle")
                                 .foregroundStyle(set.checked ? .green : .secondary)
                         }
-                        TextField("set", text: $set.text)
+                        TextField("set", text: textBinding(for: set.id))
                             .textFieldStyle(.roundedBorder)
                             .strikethrough(set.checked)
+                        Button {
+                            guard group.sets.count > 1, let si = group.sets.firstIndex(where: { $0.id == set.id }) else { return }
+                            group.sets.remove(at: si)
+                        } label: {
+                            Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                        }
                     }
+                }
+                Button {
+                    group.sets.append(SetEntry(text: group.sets.last?.text ?? "", checked: false))
+                } label: {
+                    Label("Add set", systemImage: "plus").font(.footnote.bold())
                 }
             }
             .padding(.top, 4)
@@ -156,6 +169,15 @@ private struct ExerciseGroupCard: View {
         .background(Color(.systemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
+    }
+
+    private func textBinding(for setId: UUID) -> Binding<String> {
+        Binding(
+            get: { group.sets.first(where: { $0.id == setId })?.text ?? "" },
+            set: { newValue in
+                if let si = group.sets.firstIndex(where: { $0.id == setId }) { group.sets[si].text = newValue }
+            }
+        )
     }
 
     private var isWarmupOrFinisher: Bool {
