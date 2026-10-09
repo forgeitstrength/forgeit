@@ -232,3 +232,36 @@ or via parent FK for `exercises`/`session_exercise_logs`). Reference tables
   DB or shown to the user as fact (a specific video, a specific number),
   verify independently rather than trusting a subagent's own
   self-reported confidence — see the video-link saga above for why.
+- **No build step means no automated visual regression testing either.**
+  For any CSS/layout change, don't just read the diff — render it. A small
+  inline `mock.js` can stand in for `supabase-js` (stub `auth.getUser`/
+  `getSession`/`onAuthStateChange` + a generic `from(table)` query builder
+  over in-memory fixture rows) so the app boots into a realistic logged-in
+  state without real credentials, then Chromium (pre-installed at
+  `/opt/pw-browsers/chromium`, see environment notes) can screenshot it.
+  This is how the add/remove-set and daily-theme work below was verified.
+
+## Daily rotating color theme
+
+`index.html`'s `<head>` has an inline `<script>` (right before `</head>`,
+deliberately placed before `<body>` to avoid a flash of the base theme)
+that overrides the design system's CSS custom properties
+(`--surface-0/1/2`, `--text-primary/secondary/muted`, `--gridline`,
+`--border`, `--accent`, `--accent-soft`, `--card-shadow`) with a fresh HSL
+palette each calendar day. The hue is `(epochDay * 137.508) % 360` —
+golden-angle stepping so hues spread out instead of visibly repeating
+every N days — computed separately for light and dark
+(`prefers-color-scheme`), deterministic from the date alone (same color
+all day, same across devices, nothing stored). This was a deliberate
+"browse colors until you find a favorite" request from the repo owner.
+
+Intentionally **not** themed: `--series-protein/carbs/fat` (macro ring/
+chart colors) and `--status-good/--status-bad`. Those are semantic —
+changing them daily would make "which ring is protein" or "is this
+flagged good or bad" unlearnable from one day to the next.
+
+**When the owner picks a favorite**: replace the inline script's computed
+`hue` with that fixed value (or just hardcode the resulting `light`/`dark`
+objects as the normal `:root`/`@media` blocks the way the rest of the
+design system already works), and delete the script. Don't leave the
+rotation running alongside a "locked" state — pick one.

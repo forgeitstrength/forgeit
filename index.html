@@ -341,6 +341,7 @@
   .plan-ex:first-child { border-top: 1px solid var(--gridline); }
   .plan-ex-name { color: var(--text-primary); font-weight: 600; }
   .plan-ex-sets { color: var(--text-muted); text-align: right; flex-shrink: 0; max-width: 55%; }
+  .plan-set-seg { white-space: nowrap; }
 
   /* day / date pickers on Today */
   .day-picker-row { display: flex; gap: 8px; overflow-x: auto; padding: 12px 0 2px; margin: 0 -2px 2px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
@@ -484,6 +485,48 @@
   .auth-toggle { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 8px; }
   .auth-toggle a { color: var(--accent); font-weight: 650; text-decoration: none; cursor: pointer; }
 </style>
+<script>
+// ---------- daily rotating theme ----------
+// A full color theme (background tint, text, accent) picked fresh each calendar
+// day — same color all day, different the next, deterministic from the date so
+// it's identical across tabs/reloads/devices without needing to store anything.
+// Chart/semantic colors (macro rings, good/bad status) are left alone on purpose:
+// those need to mean the same thing every day, not just look nice.
+// Runs inline in <head>, before <body> paints, so there's no flash of the base
+// terracotta theme before this takes over. Once a favorite day's color is picked,
+// swap this for a fixed palette (see CLAUDE.md).
+(function () {
+  function hsl(h, s, l) { return "hsl(" + Math.round(h) + ", " + s + "%, " + l + "%)"; }
+  function hsla(h, s, l, a) { return "hsla(" + Math.round(h) + ", " + s + "%, " + l + "%, " + a + ")"; }
+
+  var now = new Date();
+  var epochDay = Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000);
+  var GOLDEN_ANGLE = 137.508; // irrational-ish step — well-spread hues, no short repeating cycle
+  var hue = (epochDay * GOLDEN_ANGLE) % 360;
+
+  var light = {
+    "--surface-0": hsl(hue, 24, 96), "--surface-1": hsl(hue, 18, 99), "--surface-2": hsl(hue, 22, 93),
+    "--text-primary": hsl(hue, 20, 10), "--text-secondary": hsl(hue, 10, 35), "--text-muted": hsl(hue, 8, 58),
+    "--gridline": hsl(hue, 20, 88), "--border": hsla(hue, 30, 10, 0.09),
+    "--accent": hsl(hue, 58, 40), "--accent-soft": hsl(hue, 48, 90),
+    "--card-shadow": "0 1px 2px " + hsla(hue, 30, 10, 0.04) + ", 0 6px 20px " + hsla(hue, 30, 10, 0.06),
+  };
+  var dark = {
+    "--surface-0": hsl(hue, 20, 7), "--surface-1": hsl(hue, 15, 11), "--surface-2": hsl(hue, 15, 14),
+    "--text-primary": hsl(hue, 16, 95), "--text-secondary": hsl(hue, 10, 78), "--text-muted": hsl(hue, 8, 56),
+    "--gridline": hsl(hue, 15, 20), "--border": "rgba(255,255,255,0.09)",
+    "--accent": hsl(hue, 65, 68), "--accent-soft": hsl(hue, 38, 20),
+    "--card-shadow": "0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.32)",
+  };
+  function cssVars(o) { return Object.keys(o).map(function (k) { return k + ": " + o[k] + ";"; }).join(" "); }
+
+  var style = document.createElement("style");
+  style.textContent =
+    ":root { " + cssVars(light) + " }\n" +
+    "@media (prefers-color-scheme: dark) { :root:not([data-theme=\"light\"]) { " + cssVars(dark) + " } }";
+  document.head.appendChild(style);
+})();
+</script>
 </head>
 <body>
 
@@ -673,8 +716,8 @@
       <div class="chip" data-chip="shake">Had Shake</div>
     </div>
     <div class="field-row">
-      <input class="qa-input" id="alcoholInput" type="number" inputmode="decimal" min="0" step="1" placeholder="Alcohol g (optional)">
-      <input class="qa-input" id="fiberInput" type="number" inputmode="decimal" min="0" step="1" placeholder="Fiber g (optional)">
+      <input class="qa-input" id="alcoholInput" type="number" inputmode="decimal" min="0" step="1" placeholder="Alcohol (g)">
+      <input class="qa-input" id="fiberInput" type="number" inputmode="decimal" min="0" step="1" placeholder="Fiber (g)">
     </div>
     <button class="btn ghost" id="logFoodBtn">Log it</button>
     <button class="btn text-link" id="copyYesterdayBtn" style="margin-top:2px;">Copy yesterday's log</button>
@@ -1725,6 +1768,10 @@ function renderDayPicker() {
       } catch (e) { showToast("Couldn't load that day", true); }
     });
   });
+  // keep the active pill fully in view instead of leaving it clipped at the
+  // scroll row's edge (block:"nearest" avoids scrolling the whole page too)
+  const activePill = row.querySelector(".day-pill.active");
+  if (activePill) activePill.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 async function stepCycle(delta) {
@@ -1843,8 +1890,8 @@ function renderFood() {
             <input class="qa-input" data-edit="fat" type="number" inputmode="decimal" placeholder="Fat g" value="${f.fat_g || ""}">
           </div>
           <div class="field-row" style="margin-top:8px;">
-            <input class="qa-input" data-edit="alcohol" type="number" inputmode="decimal" placeholder="Alcohol g (optional)" value="${f.alcohol_g || ""}">
-            <input class="qa-input" data-edit="fiber" type="number" inputmode="decimal" placeholder="Fiber g (optional)" value="${f.fiber_g || ""}">
+            <input class="qa-input" data-edit="alcohol" type="number" inputmode="decimal" placeholder="Alcohol (g)" value="${f.alcohol_g || ""}">
+            <input class="qa-input" data-edit="fiber" type="number" inputmode="decimal" placeholder="Fiber (g)" value="${f.fiber_g || ""}">
           </div>
           <div style="display:flex;gap:8px;margin-top:10px;">
             <button class="btn" style="margin-top:0;" data-action="save-food" data-id="${f.id}">Save</button>
@@ -2236,7 +2283,7 @@ function renderPlan() {
       <div>
         <div class="plan-ex">
           <div class="plan-ex-name">${escapeHtml(e.name)}</div>
-          <div class="plan-ex-sets">${escapeHtml(e.sets.join(" · ")) || "—"}</div>
+          <div class="plan-ex-sets">${e.sets.length ? e.sets.map(s => `<span class="plan-set-seg">${escapeHtml(s)}</span>`).join(" · ") : "—"}</div>
         </div>
         ${exerciseDetailsHtml(e)}
       </div>`).join("");
