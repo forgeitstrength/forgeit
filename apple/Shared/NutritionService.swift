@@ -207,7 +207,7 @@ final class NutritionService: ObservableObject {
         }
     }
 
-    func logSupplement(name: String) async {
+    func logSupplement(_ name: String) async {
         guard let userId = client.currentUserId, !name.isEmpty else { return }
         do {
             try await client.insert("supplement_log", values: SupplementLogEntry(userId: userId, date: date, name: name))

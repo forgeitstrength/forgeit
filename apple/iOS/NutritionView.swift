@@ -72,7 +72,7 @@ struct NutritionView: View {
                         Text(tag).font(.caption)
                             .padding(.horizontal, 10).padding(.vertical, 5)
                             .background(selectedTags.contains(tag) ? Color.orange : Color(.secondarySystemBackground))
-                            .foregroundStyle(selectedTags.contains(tag) ? .white : .primary)
+                            .foregroundStyle(selectedTags.contains(tag) ? Color.white : Color.primary)
                             .clipShape(Capsule())
                     }
                 }

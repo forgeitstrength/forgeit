@@ -21,7 +21,7 @@ struct WatchWorkoutView: View {
                             } label: {
                                 HStack {
                                     Image(systemName: workout.groups[gi].sets[si].checked ? "checkmark.circle.fill" : "circle")
-                                        .foregroundStyle(workout.groups[gi].sets[si].checked ? .green : .secondary)
+                                        .foregroundStyle(workout.groups[gi].sets[si].checked ? Color.green : Color.secondary)
                                     Text(workout.groups[gi].sets[si].text)
                                         .strikethrough(workout.groups[gi].sets[si].checked)
                                 }

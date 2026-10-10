@@ -70,7 +70,7 @@ struct WorkoutView: View {
                         .frame(minWidth: 56)
                         .padding(.vertical, 6).padding(.horizontal, 8)
                         .background(day.id == workout.selectedDayId ? Color.orange : Color(.secondarySystemBackground))
-                        .foregroundStyle(day.id == workout.selectedDayId ? .white : .primary)
+                        .foregroundStyle(day.id == workout.selectedDayId ? Color.white : Color.primary)
                         .opacity(day.active ? 1 : 0.5)
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
@@ -130,7 +130,7 @@ private struct ExerciseGroupCard: View {
                             }
                         } label: {
                             Image(systemName: set.checked ? "checkmark.circle.fill" : "circle")
-                                .foregroundStyle(set.checked ? .green : .secondary)
+                                .foregroundStyle(set.checked ? Color.green : Color.secondary)
                         }
                         TextField("set", text: textBinding(for: set.id))
                             .textFieldStyle(.roundedBorder)
