@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0b0b0b">
 <title>Forge</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23c2551f'/%3E%3Cpath d='M28 50h44M34 38v24M66 38v24M22 44v12M78 44v12' stroke='white' stroke-width='9' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23127c8c'/%3E%3Cpath d='M28 50h44M34 38v24M66 38v24M22 44v12M78 44v12' stroke='white' stroke-width='9' stroke-linecap='round'/%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   /* ============================================================
@@ -20,36 +20,36 @@
      ============================================================ */
   :root {
     color-scheme: light;
-    --surface-0: #f7f6f3;
-    --surface-1: #ffffff;
-    --surface-2: #f1efe9;
-    --text-primary: #17160f;
-    --text-secondary: #5c594e;
-    --text-muted: #96938a;
-    --gridline: #e6e3da;
-    --border: rgba(23,22,15,0.09);
-    --accent: #c2551f;
-    --accent-soft: #f2e2d6;
+    --surface-0: #f2f7f7;
+    --surface-1: #fcfdfd;
+    --surface-2: #e9f0f1;
+    --text-primary: #141d1f;
+    --text-secondary: #506062;
+    --text-muted: #8b9a9c;
+    --gridline: #dae5e7;
+    --border: rgba(20,29,31,0.09);
+    --accent: #127c8c;
+    --accent-soft: #d9eef2;
     --series-protein: #5b7ba6;
     --series-carbs: #c98a3e;
     --series-fat: #6ba177;
     --status-good: #3f9d5d;
     --status-bad: #c05a4a;
-    --card-shadow: 0 1px 2px rgba(23,22,15,0.03), 0 6px 20px rgba(23,22,15,0.05);
+    --card-shadow: 0 1px 2px rgba(20,29,31,0.04), 0 6px 20px rgba(20,29,31,0.06);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       color-scheme: dark;
-      --surface-0: #100f0c;
-      --surface-1: #1a1915;
-      --surface-2: #201f1a;
-      --text-primary: #f5f4f0;
-      --text-secondary: #c2bfb3;
-      --text-muted: #8a877d;
-      --gridline: #2c2a24;
+      --surface-0: #0e1415;
+      --surface-1: #181f20;
+      --surface-2: #1e2829;
+      --text-primary: #f0f4f4;
+      --text-secondary: #c1cbcd;
+      --text-muted: #869598;
+      --gridline: #2b393b;
       --border: rgba(255,255,255,0.09);
-      --accent: #e08a54;
-      --accent-soft: #3a2c22;
+      --accent: #1a9bae;
+      --accent-soft: #204146;
       --series-protein: #7c9cc4;
       --series-carbs: #d9a25f;
       --series-fat: #86bd93;
@@ -485,48 +485,6 @@
   .auth-toggle { text-align: center; font-size: 13px; color: var(--text-muted); margin-top: 8px; }
   .auth-toggle a { color: var(--accent); font-weight: 650; text-decoration: none; cursor: pointer; }
 </style>
-<script>
-// ---------- daily rotating theme ----------
-// A full color theme (background tint, text, accent) picked fresh each calendar
-// day — same color all day, different the next, deterministic from the date so
-// it's identical across tabs/reloads/devices without needing to store anything.
-// Chart/semantic colors (macro rings, good/bad status) are left alone on purpose:
-// those need to mean the same thing every day, not just look nice.
-// Runs inline in <head>, before <body> paints, so there's no flash of the base
-// terracotta theme before this takes over. Once a favorite day's color is picked,
-// swap this for a fixed palette (see CLAUDE.md).
-(function () {
-  function hsl(h, s, l) { return "hsl(" + Math.round(h) + ", " + s + "%, " + l + "%)"; }
-  function hsla(h, s, l, a) { return "hsla(" + Math.round(h) + ", " + s + "%, " + l + "%, " + a + ")"; }
-
-  var now = new Date();
-  var epochDay = Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000);
-  var GOLDEN_ANGLE = 137.508; // irrational-ish step — well-spread hues, no short repeating cycle
-  var hue = (epochDay * GOLDEN_ANGLE) % 360;
-
-  var light = {
-    "--surface-0": hsl(hue, 24, 96), "--surface-1": hsl(hue, 18, 99), "--surface-2": hsl(hue, 22, 93),
-    "--text-primary": hsl(hue, 20, 10), "--text-secondary": hsl(hue, 10, 35), "--text-muted": hsl(hue, 8, 58),
-    "--gridline": hsl(hue, 20, 88), "--border": hsla(hue, 30, 10, 0.09),
-    "--accent": hsl(hue, 58, 40), "--accent-soft": hsl(hue, 48, 90),
-    "--card-shadow": "0 1px 2px " + hsla(hue, 30, 10, 0.04) + ", 0 6px 20px " + hsla(hue, 30, 10, 0.06),
-  };
-  var dark = {
-    "--surface-0": hsl(hue, 20, 7), "--surface-1": hsl(hue, 15, 11), "--surface-2": hsl(hue, 15, 14),
-    "--text-primary": hsl(hue, 16, 95), "--text-secondary": hsl(hue, 10, 78), "--text-muted": hsl(hue, 8, 56),
-    "--gridline": hsl(hue, 15, 20), "--border": "rgba(255,255,255,0.09)",
-    "--accent": hsl(hue, 65, 68), "--accent-soft": hsl(hue, 38, 20),
-    "--card-shadow": "0 1px 2px rgba(0,0,0,0.3), 0 8px 24px rgba(0,0,0,0.32)",
-  };
-  function cssVars(o) { return Object.keys(o).map(function (k) { return k + ": " + o[k] + ";"; }).join(" "); }
-
-  var style = document.createElement("style");
-  style.textContent =
-    ":root { " + cssVars(light) + " }\n" +
-    "@media (prefers-color-scheme: dark) { :root:not([data-theme=\"light\"]) { " + cssVars(dark) + " } }";
-  document.head.appendChild(style);
-})();
-</script>
 </head>
 <body>
 

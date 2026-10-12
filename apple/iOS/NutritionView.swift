@@ -71,7 +71,7 @@ struct NutritionView: View {
                     } label: {
                         Text(tag).font(.caption)
                             .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(selectedTags.contains(tag) ? Color.orange : Color(.secondarySystemBackground))
+                            .background(selectedTags.contains(tag) ? Color.forgeAccent : Color(.secondarySystemBackground))
                             .foregroundStyle(selectedTags.contains(tag) ? Color.white : Color.primary)
                             .clipShape(Capsule())
                     }
@@ -87,7 +87,7 @@ struct NutritionView: View {
                 }
             }
             .buttonStyle(.borderedProminent)
-            .tint(.orange)
+            .tint(Color.forgeAccent)
             .disabled(foodText.trimmingCharacters(in: .whitespaces).isEmpty)
 
             if let msg = nutrition.lastLogMessage {

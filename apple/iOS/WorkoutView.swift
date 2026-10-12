@@ -41,7 +41,7 @@ struct WorkoutView: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .tint(.orange)
+                    .tint(Color.forgeAccent)
                     .disabled(workout.isLoading)
 
                     if let saved = workout.lastSavedMessage {
@@ -69,7 +69,7 @@ struct WorkoutView: View {
                         }
                         .frame(minWidth: 56)
                         .padding(.vertical, 6).padding(.horizontal, 8)
-                        .background(day.id == workout.selectedDayId ? Color.orange : Color(.secondarySystemBackground))
+                        .background(day.id == workout.selectedDayId ? Color.forgeAccent : Color(.secondarySystemBackground))
                         .foregroundStyle(day.id == workout.selectedDayId ? Color.white : Color.primary)
                         .opacity(day.active ? 1 : 0.5)
                         .clipShape(RoundedRectangle(cornerRadius: 10))

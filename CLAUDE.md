@@ -241,27 +241,17 @@ or via parent FK for `exercises`/`session_exercise_logs`). Reference tables
   `/opt/pw-browsers/chromium`, see environment notes) can screenshot it.
   This is how the add/remove-set and daily-theme work below was verified.
 
-## Daily rotating color theme
+## Color theme (cyan)
 
-`index.html`'s `<head>` has an inline `<script>` (right before `</head>`,
-deliberately placed before `<body>` to avoid a flash of the base theme)
-that overrides the design system's CSS custom properties
-(`--surface-0/1/2`, `--text-primary/secondary/muted`, `--gridline`,
-`--border`, `--accent`, `--accent-soft`, `--card-shadow`) with a fresh HSL
-palette each calendar day. The hue is `(epochDay * 137.508) % 360` —
-golden-angle stepping so hues spread out instead of visibly repeating
-every N days — computed separately for light and dark
-(`prefers-color-scheme`), deterministic from the date alone (same color
-all day, same across devices, nothing stored). This was a deliberate
-"browse colors until you find a favorite" request from the repo owner.
+The app used to rotate its color theme daily (an inline `<head>` script
+overriding the design tokens with a golden-angle HSL palette). The repo owner
+picked **cyan**, so that script was removed and the palette is now hardcoded
+in the normal `:root` / `@media (prefers-color-scheme: dark)` token blocks
+(hue ~188; light accent `#127c8c`, dark accent `#1a9bae`, both chosen so white
+button text stays legible). The favicon fill matches the light accent.
+
+The native app (`apple/`) uses the same cyan via `Color.forgeAccent` in
+`apple/Shared/Theme.swift` — change both together.
 
 Intentionally **not** themed: `--series-protein/carbs/fat` (macro ring/
-chart colors) and `--status-good/--status-bad`. Those are semantic —
-changing them daily would make "which ring is protein" or "is this
-flagged good or bad" unlearnable from one day to the next.
-
-**When the owner picks a favorite**: replace the inline script's computed
-`hue` with that fixed value (or just hardcode the resulting `light`/`dark`
-objects as the normal `:root`/`@media` blocks the way the rest of the
-design system already works), and delete the script. Don't leave the
-rotation running alongside a "locked" state — pick one.
+chart colors) and `--status-good/--status-bad` — those are semantic.

@@ -35,7 +35,7 @@ struct WatchWorkoutView: View {
                 } label: {
                     if workout.isLoading { ProgressView() } else { Text("Save workout") }
                 }
-                .tint(.orange)
+                .tint(Color.forgeAccent)
                 .disabled(workout.isLoading)
             }
             .navigationTitle("Workout")

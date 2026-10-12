@@ -14,7 +14,7 @@ struct LoginView: View {
             VStack(spacing: 16) {
                 Image(systemName: "figure.strengthtraining.traditional")
                     .font(.system(size: 48))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(Color.forgeAccent)
                 Text("Forge").font(.largeTitle.bold())
 
                 TextField("Email", text: $email)
@@ -49,7 +49,7 @@ struct LoginView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.orange)
+                .tint(Color.forgeAccent)
                 .disabled(email.isEmpty || password.isEmpty || isBusy)
 
                 Button(isSignUp ? "Already have an account? Log in" : "New here? Create an account") {

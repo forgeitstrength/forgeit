@@ -24,7 +24,7 @@ struct MainTabView: View {
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
         }
-        .tint(.orange)
+        .tint(Color.forgeAccent)
         .task {
             await workout.load()
             await nutrition.loadDay()

@@ -18,8 +18,19 @@ targets:
     sources:
       - path: iOS
       - path: Shared
+    # XcodeGen regenerates Info.plist from these properties (plus the standard
+    # CFBundle* keys) on every `xcodegen generate`, so custom keys must live
+    # here, not only in the .plist file — anything only in the file is wiped.
     info:
       path: iOS/Info.plist
+      properties:
+        CFBundleDisplayName: Forge
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.forgeit.app
@@ -37,6 +48,13 @@ targets:
       - path: Shared
     info:
       path: WatchOS/Info.plist
+      properties:
+        CFBundleDisplayName: Forge
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.forgeit.app
+        WKRunsIndependentlyOfCompanionApp: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.forgeit.app.watchkitapp
